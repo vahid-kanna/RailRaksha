@@ -1367,6 +1367,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   position: relative;
   overflow: hidden;
 }
+
+/* Modal action buttons container */
+.modal-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  bottom: 0;
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(12px);
+  z-index: 1;
+}
 .btn-save-settings::after {
   content: '';
   position: absolute;
@@ -1474,5 +1486,35 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
     justify-content: center;
     min-height: 100vh;
     background: #000;
+  }
+
+  /* Fix: Settings modal should be centered within viewport on desktop */
+  .modal-overlay {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-sheet {
+    border-radius: var(--radius-lg);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 85vh;
+    margin: 20px;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
+  }
+
+  .modal-handle {
+    display: none;
+  }
+
+  .modal-title {
+    text-align: center;
+  }
+
+  /* Ensure buttons are full-width and properly stacked */
+  .btn-save-settings,
+  #btn-close-settings {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
   }
 }
