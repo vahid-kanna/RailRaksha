@@ -1,0 +1,86 @@
+# Netlify configuration for RailRaksha PWA
+# Static HTML/JS app — no build step needed
+
+[build]
+  publish = "."
+  command = "bash build-keys.sh"
+
+# Security & permissions headers for all routes
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(self), notifications=(self), microphone=(self)"
+
+# CSS — explicit MIME type (prevents redirect from intercepting)
+[[headers]]
+  for = "/css/*.css"
+  [headers.values]
+    Content-Type = "text/css; charset=utf-8"
+    Cache-Control = "public, max-age=3600"
+
+# JS — ES module MIME type
+[[headers]]
+  for = "/js/*.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "public, max-age=3600"
+
+# Service worker — never cached
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Icons
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+# Manifest
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "public, max-age=3600"
+
+# ── Redirects ──────────────────────────────────────────────────────────────
+# Static asset files — serve directly (200), do NOT redirect to index.html
+[[redirects]]
+  from = "/css/*"
+  to = "/css/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/js/*"
+  to = "/js/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/icons/*"
+  to = "/icons/:splat"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+  force = false
+
+[[redirects]]
+  from = "/manifest.json"
+  to = "/manifest.json"
+  status = 200
+  force = false
+
+# SPA fallback — ONLY for non-file routes (must be last)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

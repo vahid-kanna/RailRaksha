@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="te" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#030712" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RailRaksha" />
+
+  <title>RailRaksha — Railway Track Worker Safety</title>
+  <meta name="description" content="AI-powered safety and documentation platform for Indian Railways Gang Mate track workers. Real-time train alerts, defect reporting, and gang diary." />
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Google Fonts with font-display: swap for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- CSP Meta Tag (supplementary to HTTP header) -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://router.bynara.id https://generativelanguage.googleapis.com https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src 'self' https://fonts.gstatic.com;
+    img-src 'self' data: blob:;
+    connect-src 'self' https://router.bynara.id https://generativelanguage.googleapis.com https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
+    media-src 'self';
+    worker-src 'self' blob:;
+  ">
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════
+     APP SHELL
+════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── Header ──────────────────────────────────── -->
+  <header id="header">
+    <div class="logo">
+      <div class="logo-icon">🚂</div>
+      <div class="logo-text">
+        <div class="brand">RailRaksha</div>
+        <div class="sub" id="header-subtitle">SKM Section · VJA Division</div>
+      </div>
+    </div>
+    <div class="header-spacer"></div>
+    <div id="gps-label" style="font-size:10px;color:var(--text-muted);margin-right:6px;">📍 Locating...</div>
+    <button id="btn-settings" aria-label="Settings">⚙️</button>
+  </header>
+
+  <!-- ── Main Content ─────────────────────────────── -->
+  <main id="main-content">
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 1: TRAIN PROXIMITY ALERT
+    ════════════════════════════════════════════ -->
+    <section id="screen-train-alert" class="screen active">
+
+      <!-- Emergency Banner (hidden by default) -->
+      <div id="emergency-banner" class="emergency-banner" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="emergency-icon" aria-hidden="true">🚨</div>
+        <div class="emergency-text">
+          <div class="emergency-title">CLEAR TRACK NOW!</div>
+          <div class="emergency-subtitle">Train approaching — all workers off!</div>
+        </div>
+      </div>
+
+      <!-- Status Hero Card -->
+      <div id="track-status-hero" class="track-status-hero status-clear">
+        <div class="status-icon-ring">
+          <span id="status-icon">✅</span>
+        </div>
+        <div class="status-label" id="status-label">TRACK CLEAR</div>
+        <div class="status-sublabel" id="status-sublabel">Start work session to enable live alerts</div>
+      </div>
+
+      <!-- ★ WORK SESSION MEGA BUTTON ★ -->
+      <button id="session-mega-btn" class="session-mega-btn session-off" aria-label="Toggle work session">
+        <div class="smb-icon" id="smb-icon">🛡️</div>
+        <div class="smb-content">
+          <div style="display:flex;align-items:center;">
+            <span class="smb-status-dot dot-off" id="smb-dot"></span>
+            <span class="smb-title" id="smb-title">START WORK SESSION</span>
+          </div>
+          <div class="smb-sub" id="smb-sub">Tap when you go on track — alerts will activate</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;" id="smb-last"></div>
+        </div>
+        <div class="smb-right" id="smb-right" style="display:none;">
+          <div class="smb-timer" id="smb-timer">00:00</div>
+          <div class="smb-timer-label">SESSION</div>
+        </div>
+      </button>
+
+      <!-- Live Distance Panel (shows when session is ON) -->
+      <div id="live-distance-panel" class="live-distance-panel">
+        <div class="ldp-row">
+          <span class="ldp-icon">📡</span>
+          <div class="ldp-content">
+            <div class="ldp-title">Nearest Train Distance</div>
+            <div class="ldp-value dist-safe" id="ldp-distance">Calculating...</div>
+            <div class="ldp-sub" id="ldp-train-name">Waiting for GPS &amp; train data</div>
+          </div>
+          <span class="ldp-badge sched" id="ldp-source-badge">TIMETABLE</span>
+        </div>
+      </div>
+
+      <!-- Sync Status -->
+      <div class="sync-status-bar">
+        <div id="sync-dot" class="sync-dot online"></div>
+        <div class="sync-text" id="sync-text">Checking train data...</div>
+        <button id="btn-refresh-trains">Refresh</button>
+      </div>
+
+      <!-- Freight Trains Warning -->
+      <div class="freight-info-card">
+        <span class="fi-icon">🚛</span>
+        <div class="fi-text">
+          <strong>Freight trains are not on NTES.</strong> Always maintain lookout.
+          Add a <strong style="color:#CE93D8;">RailRadar API key</strong> in Settings for live GPS tracking of express trains (100% free).
+        </div>
+      </div>
+
+      <!-- Train List -->
+      <div class="trains-section-title">UPCOMING TRAINS AT SINGARAYAKONDA (SKM)</div>
+      <div id="train-list">
+        <div class="empty-state">
+          <div class="es-icon">🔄</div>
+          <div class="es-title">Loading train schedule...</div>
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 2: TRACK DEFECT REPORT
+    ════════════════════════════════════════════ -->
+    <section id="screen-defect" class="screen">
+      <div class="section-header">
+        <h2>📷 Track Defect</h2>
+        <span class="badge badge-warn">AI Powered</span>
+      </div>
+
+      <!-- Photo Capture Zone -->
+      <div id="capture-zone" class="photo-capture-zone" role="button" tabindex="0" aria-label="Capture defect photo">
+        <input type="file" id="defect-file-input" accept="image/*" capture="environment" style="display:none" aria-label="Select photo" />
+        <div id="capture-icon" class="capture-icon">📷</div>
+        <div id="capture-text">
+          <div class="capture-title">Photograph the Defect</div>
+          <div class="capture-sub">Tap to open camera · AI will classify automatically</div>
+        </div>
+        <img id="captured-image-preview" src="" alt="Captured defect photo" />
+      </div>
+
+      <!-- Analyze Button -->
+      <button id="btn-analyze-defect" class="btn-primary" style="display:none; margin-bottom:14px;">
+        🤖 Analyze Defect with AI
+      </button>
+
+      <!-- AI Analysis Result Card -->
+      <div id="defect-analysis-card" class="defect-analysis-card">
+        <div class="analysis-header">
+          <span class="ai-badge">🤖 GEMINI AI</span>
+          <span class="analysis-title">Defect Analysis Result</span>
+        </div>
+
+        <div id="defect-type-badge" class="defect-type-badge severity-high">🟠 Analyzing...</div>
+
+        <div class="detail-row">
+          <span class="detail-label">Severity</span>
+          <span class="detail-value" id="detail-severity">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">AI Confidence</span>
+          <span class="detail-value" id="detail-confidence">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">IRPWM Code</span>
+          <span class="detail-value" id="detail-irpwm">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Speed Restriction</span>
+          <span class="detail-value" id="detail-speed">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">GPS Location</span>
+          <span class="detail-value" id="detail-gps">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Time</span>
+          <span class="detail-value" id="detail-time">—</span>
+        </div>
+        <div class="detail-row" style="flex-direction:column;gap:6px;">
+          <span class="detail-label">Description</span>
+          <span class="detail-value" id="detail-description" style="max-width:100%;text-align:left;line-height:1.5;">—</span>
+        </div>
+
+        <div class="defect-action-section">
+          <div class="detail-label" style="margin-bottom:6px;">Recommended Action</div>
+          <div class="recommended-action" id="recommended-action">—</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px;" id="irpwm-reference">IRPWM Ref: —</div>
+        </div>
+
+        <div class="btn-row" style="margin-top:14px;">
+          <button id="btn-share-report" class="btn-primary" style="display:none;">
+            📤 Share Report with PWI
+          </button>
+          <button id="btn-new-defect" class="btn-secondary">🔄 New</button>
+        </div>
+      </div>
+
+      <!-- Defect History -->
+      <div class="defect-history-title">RECENT DEFECT REPORTS</div>
+      <div id="defect-history-list"></div>
+
+    </section>
+
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 3: GANG DIARY
+    ════════════════════════════════════════════ -->
+    <section id="screen-diary" class="screen">
+      <div class="section-header">
+        <h2>📔 Gang Diary</h2>
+        <span class="badge badge-ok">Voice AI</span>
+      </div>
+
+      <!-- Date Header -->
+      <div class="diary-date-header">
+        <div class="diary-date-icon">📅</div>
+        <div class="diary-date-info">
+          <div class="diary-date-text" id="diary-date-text">Loading...</div>
+          <div class="diary-gang-info" id="diary-gang-info">Gang — · SKM Section</div>
+        </div>
+      </div>
+
+      <!-- Attendance Card -->
+      <div class="attendance-card">
+        <div class="attendance-header">
+          <div class="attendance-title">👷 Attendance</div>
+          <div class="attendance-count" id="attendance-count">22<span>/22 workers</span></div>
+        </div>
+        <div class="attendance-bar-wrap">
+          <div class="attendance-bar-fill" id="attendance-bar" style="width:100%"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <div class="attendance-sub" id="attendance-sub" style="flex:1">Full attendance today ✅</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;color:var(--text-muted);">Present:</span>
+            <input id="attendance-input" type="number" min="0" max="30" value="22"
+              style="width:50px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:#fff;font-size:13px;font-weight:600;text-align:center;" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Voice Record Button -->
+      <button id="btn-record" class="voice-record-btn">
+        <div class="mic-circle"><span id="mic-emoji">🎙️</span></div>
+        <div class="voice-record-info">
+          <div class="voice-title" id="voice-title">Tap to Record Today's Work</div>
+          <div class="voice-sub" id="voice-sub">తెలుగులో మాట్లాడండి — Speak in Telugu</div>
+        </div>
+      </button>
+
+      <!-- Transcription -->
+      <div id="transcription-card" class="transcription-card">
+        <div class="transcription-label">Your Words</div>
+        <div class="transcription-text" id="transcription-text">Waiting for recording...</div>
+      </div>
+
+      <!-- Generate Button -->
+      <button id="btn-generate-diary" class="btn-primary" style="display:none;margin-bottom:14px;">
+        📝 Generate Official Gang Diary
+      </button>
+
+      <!-- Generated Diary Entry -->
+      <div id="diary-entry-card" class="diary-entry-card">
+        <div class="diary-entry-header">
+          <span class="dei-title" id="entry-date">Gang Diary</span>
+          <span class="dei-time" id="entry-time">—</span>
+        </div>
+        <div class="diary-entry-body">
+          <div class="diary-field">
+            <div class="df-label">Gang / Mate / Section</div>
+            <div class="df-value" id="entry-gang">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Attendance</div>
+            <div class="df-value" id="entry-attendance">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Work Done Today</div>
+            <div class="df-value" id="entry-work-done" style="line-height:1.7;">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Materials Used</div>
+            <div class="df-value" id="entry-materials">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Defects Observed</div>
+            <div class="df-value" id="entry-defects">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Safety Measures</div>
+            <div class="df-value" id="entry-safety">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Special Instructions</div>
+            <div class="df-value" id="entry-special">—</div>
+          </div>
+          <div class="diary-field">
+            <div class="df-label">Remarks</div>
+            <div class="df-value" id="entry-remarks">—</div>
+          </div>
+          <div class="diary-field" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+            <div class="df-label">తెలుగు సారాంశం</div>
+            <div class="df-value telugu" id="entry-telugu" style="font-size:14px;">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons for diary -->
+      <div class="btn-row" id="diary-action-btns" style="display:flex;">
+        <button id="btn-save-diary" class="btn-primary" style="display:none;">
+          💾 Save Entry
+        </button>
+        <button id="btn-share-diary" class="btn-secondary" style="display:none;">
+          📤 Share to PWI
+        </button>
+      </div>
+
+      <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;" id="today-entries-count">No entries saved yet today</div>
+
+    </section>
+
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 4: WEATHER & VULNERABILITY
+    ════════════════════════════════════════════ -->
+    <section id="screen-weather" class="screen">
+      <div class="section-header">
+        <h2>🌧️ Track Conditions</h2>
+        <button id="btn-refresh-weather" style="background:transparent;color:var(--color-warn);font-size:12px;font-weight:600;">Refresh</button>
+      </div>
+
+      <!-- Weather Hero -->
+      <div class="weather-hero">
+        <div id="weather-icon-large" class="weather-icon-large">⛅</div>
+        <div class="weather-main">
+          <div class="weather-location">📍 Singarayakonda, Prakasam Dist.</div>
+          <div class="weather-temp" id="weather-temp">—°C</div>
+          <div class="weather-desc" id="weather-desc">Loading weather...</div>
+          <div class="weather-stats">
+            <div class="weather-stat">
+              <div class="ws-label">Humidity</div>
+              <div class="ws-value" id="weather-humidity">—%</div>
+            </div>
+            <div class="weather-stat">
+              <div class="ws-label">Wind</div>
+              <div class="ws-value" id="weather-wind">— km/h</div>
+            </div>
+            <div class="weather-stat">
+              <div class="ws-label">Rain</div>
+              <div class="ws-value" id="weather-rain">— mm/hr</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk Analysis -->
+      <div class="trains-section-title" style="margin-bottom:10px;">TRACK VULNERABILITY ASSESSMENT</div>
+      <div id="risk-list">
+        <div class="empty-state"><div class="es-icon">🔄</div><div class="es-title">Loading weather data...</div></div>
+      </div>
+
+      <!-- OWM API Note -->
+      <div style="background:var(--bg-card);border-radius:var(--radius-md);padding:12px 14px;margin-top:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          💡 Add a free <strong style="color:var(--text-secondary);">OpenWeatherMap API key</strong> in Settings for live weather data.
+          Visit <strong style="color:var(--color-warn);">openweathermap.org</strong> → Sign up free → Copy API key.
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════
+         SCREEN 5: PW MANUAL ASSISTANT
+    ════════════════════════════════════════════ -->
+    <section id="screen-manual" class="screen">
+      <div class="section-header">
+        <h2>📖 PW Manual</h2>
+        <span class="badge badge-warn">AI + Offline</span>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="manual-search-bar">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="manual-search-input" placeholder="Ask in Telugu or English..." autocomplete="off" />
+        </div>
+        <button id="btn-manual-search" class="btn-secondary" style="padding:13px 16px;flex-shrink:0;">Ask</button>
+        <button id="btn-voice-search" aria-label="Voice search">🎙️</button>
+      </div>
+
+      <!-- AI Answer Card -->
+      <div id="manual-answer-card" class="manual-answer-card">
+        <div class="maa-header">
+          <span class="ai-chip">🤖 AI</span>
+          <span class="maa-title" id="maa-title">Answer</span>
+        </div>
+        <div class="maa-body" id="maa-body">—</div>
+        <div class="maa-source" id="maa-source">—</div>
+      </div>
+
+      <!-- Quick Rules Grid -->
+      <div class="quick-rules-title">QUICK REFERENCE — OFFLINE RULES</div>
+      <div id="quick-rules-list"></div>
+
+      <!-- Emergency Notice -->
+      <div style="background:rgba(229,57,53,0.1);border:1px solid rgba(229,57,53,0.3);border-radius:var(--radius-md);padding:14px 16px;margin-top:6px;">
+        <div style="font-size:13px;font-weight:700;color:var(--color-danger);margin-bottom:6px;">🚨 Emergency Contacts</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+          <strong>Station Master (SKM):</strong> Railway emergency phone<br />
+          <strong>PWI / SSE:</strong> Direct phone (save in contacts)<br />
+          <strong>Railway Emergency:</strong> 139<br />
+          <strong>RPF (Police):</strong> 1800-111-322
+        </div>
+      </div>
+    </section>
+
+  </main><!-- /main-content -->
+
+
+  <!-- ── Bottom Navigation ─────────────────────────── -->
+  <nav id="bottom-nav" role="navigation" aria-label="Main navigation">
+    <button class="nav-btn active" data-screen="train-alert" id="nav-train-alert" aria-label="Train Alert">
+      <span class="nav-icon">🚨</span>
+      <span class="nav-label">Alert</span>
+    </button>
+    <button class="nav-btn" data-screen="defect" id="nav-defect" aria-label="Defect Report">
+      <span class="nav-icon">📷</span>
+      <span class="nav-label">Defect</span>
+    </button>
+    <button class="nav-btn" data-screen="diary" id="nav-diary" aria-label="Gang Diary">
+      <span class="nav-icon">📔</span>
+      <span class="nav-label">Diary</span>
+    </button>
+    <button class="nav-btn" data-screen="weather" id="nav-weather" aria-label="Weather">
+      <span class="nav-icon">🌧️</span>
+      <span class="nav-label">Weather</span>
+    </button>
+    <button class="nav-btn" data-screen="manual" id="nav-manual" aria-label="PW Manual">
+      <span class="nav-icon">📖</span>
+      <span class="nav-label">Manual</span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+
+<!-- ════════════════════════════════════════════════
+     SETTINGS MODAL
+════════════════════════════════════════════════ -->
+<div id="settings-overlay" class="modal-overlay" role="dialog" aria-label="Settings">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">⚙️ Settings</div>
+
+    <div class="setting-group">
+      <div class="setting-group-label">👷 Gang Information</div>
+      <div class="setting-item">
+        <label for="setting-mate_name">Mate Name (Gang Mate's Name)</label>
+        <input type="text" id="setting-mate_name" placeholder="Enter your name" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-gang_no">Gang Number</label>
+        <input type="text" id="setting-gang_no" placeholder="e.g., Gang 5/SKM" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-gang_strength">Gang Strength (Total Workers)</label>
+        <input type="number" id="setting-gang_strength" value="22" min="1" max="30" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-section">Section / Beat Length</label>
+        <input type="text" id="setting-section" placeholder="e.g., km 232–238, SKM Section" />
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-label">🛤️ Alert Mode & Work Section</div>
+      <div style="background:rgba(255,107,0,0.1);border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--text-sub);line-height:1.6;">
+          <strong style="color:#FF6B00;">Station Mode</strong> (default): Alerts fire when trains cross neighboring stations before your work section. Works 100% offline.<br/>
+          <strong style="color:#3B82F6;">GPS Mode</strong>: Alerts fire based on live GPS distance. Requires location permission. Falls back to Station Mode if GPS is unavailable.
+        </div>
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_mode">Alert Mode</label>
+        <select id="setting-alert_mode" style="width:100%;background:var(--bg-input);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;font-size:14px;color:#F8FAFC;">
+          <option value="station">📡 Station Mode — SKM ↔ UPD section (Recommended)</option>
+          <option value="gps">📍 GPS Mode — Live distance tracking</option>
+        </select>
+      </div>
+      <div class="setting-item">
+        <label for="setting-work_station_a">Work Section Start (BZA side)</label>
+        <input type="text" id="setting-work_station_a" placeholder="SKM" value="SKM" autocomplete="off" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-work_station_b">Work Section End (GDR side)</label>
+        <input type="text" id="setting-work_station_b" placeholder="UPD" value="UPD" autocomplete="off" />
+      </div>
+      <div style="background:rgba(46,125,50,0.1);border:1px solid rgba(46,125,50,0.25);border-radius:10px;padding:10px 14px;margin-top:4px;">
+        <div style="font-size:11px;color:#81C784;line-height:1.6;">
+          🛤️ Your dad's gang works between <strong>Singarayakonda (SKM)</strong> and <strong>Ulavapadu (UPD)</strong> — ~28 km section.<br/>
+          Alerts trigger when trains cross <strong>Ongole/Ammanabrolu</strong> (from BZA side) or <strong>Kavali/Tanguturu</strong> (from GDR side) before entering this section.
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-label">🚨 Alert Distance Thresholds (km) — GPS Mode Only</div>
+      <div style="background:rgba(255,111,0,0.08);border:1px solid rgba(255,111,0,0.2);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--text-sub);line-height:1.6;">
+          These only apply in <strong>GPS Mode</strong>. Set the distance at which each alert fires. Trains that have already passed are ignored automatically.
+        </div>
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_dist_critical">🔴 CRITICAL alert — Train within X km (default: 4 km)</label>
+        <input type="number" id="setting-alert_dist_critical" min="1" max="20" step="0.5" placeholder="4" autocomplete="off" />
+        <div style="font-size:10px;color:#ef9a9a;margin-top:2px;">ALL WORKERS CLEAR THE TRACK IMMEDIATELY</div>
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_dist_warn">🟠 WARNING alert — Train within X km (default: 8 km)</label>
+        <input type="number" id="setting-alert_dist_warn" min="2" max="30" step="0.5" placeholder="8" autocomplete="off" />
+        <div style="font-size:10px;color:#ffb74d;margin-top:2px;">Move all tools and equipment off the track now</div>
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_dist_prepare">🟡 PREPARE alert — Train within X km (default: 15 km)</label>
+        <input type="number" id="setting-alert_dist_prepare" min="5" max="50" step="1" placeholder="15" autocomplete="off" />
+        <div style="font-size:10px;color:#fff176;margin-top:2px;">Heads up — begin preparing to clear the track</div>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-label">⏱️ Schedule Alert Thresholds (minutes)</div>
+      <div style="background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.2);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
+          When live GPS is unavailable, alerts fire based on scheduled passing time. Set how many minutes before the train reaches your section to be alerted.
+        </div>
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_min_critical">🔴 CRITICAL — Alert X minutes before train (default: 7)</label>
+        <input type="number" id="setting-alert_min_critical" min="1" max="20" step="1" placeholder="7" autocomplete="off" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_min_warn">🟠 WARNING — Alert X minutes before train (default: 15)</label>
+        <input type="number" id="setting-alert_min_warn" min="5" max="40" step="1" placeholder="15" autocomplete="off" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-alert_min_prepare">🟡 PREPARE — Alert X minutes before train (default: 25)</label>
+        <input type="number" id="setting-alert_min_prepare" min="10" max="60" step="1" placeholder="25" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-label">📡 Weather &amp; Tracking APIs</div>
+      <div class="setting-item">
+        <label for="setting-owm_api_key">OpenWeatherMap API Key (for live weather)</label>
+        <input type="text" id="setting-owm_api_key" placeholder="Free at openweathermap.org" autocomplete="off" />
+      </div>
+      <div class="setting-item">
+        <label for="setting-railradar_key">🚄 RailRadar API Key — Live Train Tracking (100% FREE)</label>
+        <input type="text" id="setting-railradar_key" placeholder="Get free key at railradar.in/login" autocomplete="off" />
+      </div>
+      <div style="background:rgba(46,125,50,0.1);border:1px solid rgba(46,125,50,0.25);border-radius:10px;padding:10px 14px;margin-top:4px;">
+        <div style="font-size:11px;color:#81C784;line-height:1.6;">
+          📡 <strong>Live GPS tracking</strong>: Sign up FREE at <a href="https://railradar.in/login" target="_blank" style="color:#A5D6A7;">railradar.in/login</a> → copy your API key → paste here.<br/>
+          Without this key, alerts still work using the offline timetable (100% safe). RailRadar is a free community-built Indian Railways API.
+        </div>
+      </div>
+    </div>
+
+    <div class="setting-group">
+          <div class="setting-group-label">🤖 AI Engine & API Keys</div>
+      
+          <div class="setting-item" id="api-keys-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <label style="font-size:13px;font-weight:700;color:var(--text-sub);">🔐 API Keys (Password Protected)</label>
+              <button type="button" id="btn-toggle-api-keys" class="btn-secondary" style="padding:8px 16px;font-size:13px;">Show Keys</button>
+            </div>
+        
+            <div id="api-keys-locked" style="text-align:center;padding:20px;color:var(--text-muted);">
+              <div style="font-size:32px;margin-bottom:8px;">🔒</div>
+              <div style="font-weight:600;margin-bottom:4px;">API keys are hidden</div>
+              <div style="font-size:12px;">Tap "Show Keys" and enter password to view/edit</div>
+            </div>
+        
+            <div id="api-keys-unlocked" style="display:none;">
+              <div class="setting-item">
+                <label for="setting-ai_provider">AI Provider</label>
+                <select id="setting-ai_provider" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text-primary);">
+                  <option value="openai_compatible">OpenAI Compatible (Groq, OpenAI, DeepSeek, etc.)</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+              </div>
+          
+              <div class="setting-item">
+                <label for="setting-ai_model">AI Model</label>
+                <input type="text" id="setting-ai_model" placeholder="llama-3.3-70b-versatile" autocomplete="off" />
+              </div>
+          
+              <div class="setting-item">
+                <label for="setting-ai_base_url">API Base URL</label>
+                <input type="text" id="setting-ai_base_url" placeholder="https://api.groq.com/openai/v1" autocomplete="off" />
+              </div>
+          
+              <div class="setting-item">
+                <label for="setting-ai_api_key">🤖 Groq API Key</label>
+                <input type="password" id="setting-ai_api_key" placeholder="gsk_..." autocomplete="off" />
+                <button type="button" class="btn-toggle-visibility" data-target="setting-ai_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-sub);">Show</button>
+              </div>
+          
+              <div class="setting-item">
+                <label for="setting-owm_api_key">🌤️ OpenWeatherMap API Key</label>
+                <input type="password" id="setting-owm_api_key" placeholder="Free at openweathermap.org" autocomplete="off" />
+                <button type="button" class="btn-toggle-visibility" data-target="setting-owm_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-sub);">Show</button>
+              </div>
+          
+              <div class="setting-item">
+                <label for="setting-railradar_key">🚄 RailRadar API Key</label>
+                <input type="password" id="setting-railradar_key" placeholder="Get free at railradar.in/login" autocomplete="off" />
+                <button type="button" class="btn-toggle-visibility" data-target="setting-railradar_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-sub);">Show</button>
+              </div>
+          
+              <div style="background:rgba(255,111,0,0.1);border:1px solid rgba(255,111,0,0.25);border-radius:10px;padding:10px 14px;margin-top:12px;">
+                <div style="font-size:11px;color:var(--text-sub);line-height:1.6;">
+                  💡 <strong style="color:var(--color-warn);">Train alerts work 100% offline</strong> using the built-in timetable — no API key needed.<br/>
+                  API keys only enhance optional features: weather, live GPS tracking, and AI diary generation.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+    </div>
+
+    <button class="btn-save-settings" id="btn-save-settings">Save Settings</button>
+    <button class="btn-secondary" id="btn-close-settings" style="width:100%;margin-top:10px;justify-content:center;">Cancel</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     AI ANALYZING OVERLAY
+════════════════════════════════════════════════ -->
+<div id="analyzing-overlay" class="analyzing-overlay" role="status" aria-live="polite">
+  <div class="spinner-ring"></div>
+  <div class="analyzing-text">Analyzing...</div>
+  <div class="analyzing-sub">Please wait</div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     TOAST NOTIFICATION
+════════════════════════════════════════════════ -->
+<div id="toast" class="toast" role="alert" aria-live="assertive">
+  <span class="toast-icon">✅</span>
+  <span class="toast-msg">Done</span>
+</div>
+
+
+<!-- ════════════════════════════════════════════════
+     SERVICE WORKER REGISTRATION
+════════════════════════════════════════════════ -->
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(err => {
+        console.warn("SW registration failed:", err);
+      });
+    });
+  }
+</script>
+
+<!-- Main App Script (ES Module) -->
+<script type="module" src="js/app.js"></script>
+
+</body>
+</html>
