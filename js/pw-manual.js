@@ -1,7 +1,7 @@
 /**
  * RailRaksha — PW Manual Voice Assistant (pw-manual.js)
  * Telugu/English voice queries over Indian Railways IRPWM rules.
- * Uses Gemini 1.5 Flash with built-in IRPWM knowledge + quick-reference cards.
+ * Uses Groq AI (qwen/qwen3.6-27b) + quick-reference cards.
  */
 
 import { callAI, getAISettings } from './ai-engine.js';

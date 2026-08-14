@@ -4,14 +4,14 @@
 # environment variables so real API keys never live in the git repo.
 #
 # Required env vars (set in hosting dashboard, not here):
-#   GROQ_API_KEY, GEMINI_API_KEY, RAILRADAR_KEY, OWM_API_KEY
+#   BYNARA_API_KEY, GROQ_API_KEY, RAILRADAR_KEY, OWM_API_KEY
 
 set -e
 
 cat > js/config-keys.js <<EOF
 export const API_KEYS = {
+  bynara:    "${BYNARA_API_KEY}",
   groq:      "${GROQ_API_KEY}",
-  gemini:    "${GEMINI_API_KEY}",
   railradar: "${RAILRADAR_KEY}",
   owm:       "${OWM_API_KEY}",
 };

@@ -1,6 +1,6 @@
 /**
  * RailRaksha — Track Defect Photo Report (defect-report.js)
- * Uses Gemini 1.5 Flash multimodal API for AI-powered defect classification.
+ * Uses Bynara vision (mistral-medium-3-5) for AI-powered defect classification.
  */
 
 import { saveDefectReport, getDefectReports, updateDefectStatus } from './db.js';
@@ -84,7 +84,7 @@ Respond in this exact JSON format:
 If you cannot identify railway track defects or the image is unclear, set defectType to 'Image unclear - please retake' and severity to 'LOW'.`;
 
   try {
-    console.log("Calling AI for track defect analysis (image → Gemini)...");
+    console.log("Calling AI for track defect analysis (image → Bynara vision)...");
     const analysis = await callAI({
       prompt,
       imageBase64: capturedImageBase64,

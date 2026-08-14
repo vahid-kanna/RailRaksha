@@ -439,7 +439,6 @@ function loadSettings() {
     "mate_name", "gang_no", "gang_strength", "section",
     "alert_mode", "work_station_a", "work_station_b",
     "ai_provider", "ai_api_key", "ai_base_url", "ai_model",
-    "image_ai_provider", "image_ai_api_key", "image_ai_model",
     "owm_api_key", "railradar_key",
     "alert_dist_critical", "alert_dist_warn", "alert_dist_prepare",
     "alert_min_critical",  "alert_min_warn",  "alert_min_prepare"
@@ -452,21 +451,15 @@ function loadSettings() {
       if (key === "ai_base_url") {
         el.value = cfg(key) || "https://api.groq.com/openai/v1";
       } else if (key === "ai_model") {
-        el.value = cfg(key) || "llama-3.3-70b-versatile";
+        el.value = cfg(key) || "qwen/qwen3.6-27b";
       } else if (key === "ai_provider") {
         el.value = cfg(key) || "openai_compatible";
-      } else if (key === "image_ai_provider") {
-        el.value = cfg(key) || "gemini";
-      } else if (key === "image_ai_model") {
-        el.value = cfg(key) || "gemini-2.5-flash";
       } else if (key === "alert_mode") {
         el.value = cfg(key) || "station";
       } else if (key === "work_station_a") {
         el.value = cfg(key) || "SKM";
       } else if (key === "work_station_b") {
         el.value = cfg(key) || "UPD";
-      } else if (key === "ai_api_key") {
-        el.value = cfg(key) || localStorage.getItem("gemini_api_key") || "";
       } else {
         el.value = cfg(key) || "";
       }
@@ -541,18 +534,9 @@ function fillApiKeyFields() {
   const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
   
   document.getElementById("setting-ai_provider").value = cfg("ai_provider") || "openai_compatible";
-  document.getElementById("setting-ai_model").value = cfg("ai_model") || "llama-3.3-70b-versatile";
+  document.getElementById("setting-ai_model").value = cfg("ai_model") || "qwen/qwen3.6-27b";
   document.getElementById("setting-ai_base_url").value = cfg("ai_base_url") || "https://api.groq.com/openai/v1";
   document.getElementById("setting-ai_api_key").value = cfg("ai_api_key") || "";
-  if (document.getElementById("setting-image_ai_provider")) {
-    document.getElementById("setting-image_ai_provider").value = cfg("image_ai_provider") || "gemini";
-  }
-  if (document.getElementById("setting-image_ai_model")) {
-    document.getElementById("setting-image_ai_model").value = cfg("image_ai_model") || "gemini-2.5-flash";
-  }
-  if (document.getElementById("setting-image_ai_api_key")) {
-    document.getElementById("setting-image_ai_api_key").value = cfg("image_ai_api_key") || "";
-  }
   document.getElementById("setting-owm_api_key").value = cfg("owm_api_key") || "";
   document.getElementById("setting-railradar_key").value = cfg("railradar_key") || "";
 }
@@ -571,7 +555,6 @@ function saveSettings() {
     "mate_name", "gang_no", "gang_strength", "section",
     "alert_mode", "work_station_a", "work_station_b",
     "ai_provider", "ai_api_key", "ai_base_url", "ai_model",
-    "image_ai_provider", "image_ai_api_key", "image_ai_model",
     "owm_api_key", "railradar_key",
     "alert_dist_critical", "alert_dist_warn", "alert_dist_prepare",
     "alert_min_critical",  "alert_min_warn",  "alert_min_prepare"
@@ -579,10 +562,6 @@ function saveSettings() {
   fields.forEach(key => {
     const val = document.getElementById(`setting-${key}`)?.value?.trim() || "";
     localStorage.setItem(key, val);
-    // Keep backward compatibility for gemini_api_key if using gemini
-    if (key === "ai_api_key") {
-      localStorage.setItem("gemini_api_key", val);
-    }
   });
   document.getElementById("settings-overlay")?.classList.remove("active");
   showToast("Settings saved!", "ok");

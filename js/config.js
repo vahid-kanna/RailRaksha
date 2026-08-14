@@ -13,16 +13,11 @@
 import { API_KEYS } from './config-keys.js';
 
 export const DEFAULT_CONFIG = {
-  // ── AI Provider (Groq) — used for text tasks ──────────────────────────────
+  // ── AI Provider (Bynara Router) — one model for text AND image tasks ─────
   ai_provider:  "openai_compatible",
-  ai_model:     "llama-3.3-70b-versatile",
-  ai_base_url:  "https://api.groq.com/openai/v1",
-  ai_api_key:   API_KEYS.groq,
-
-  // ── Image AI Provider (Gemini) — used for vision/image tasks ──────────────
-  image_ai_provider: "gemini",
-  image_ai_model:    "gemini-2.5-flash",
-  image_ai_api_key:  API_KEYS.gemini,
+  ai_model:     "mistral-medium-3-5",
+  ai_base_url:  "https://router.bynara.id/v1",
+  ai_api_key:   API_KEYS.bynara,
 
   // ── Live Train Tracking (RailRadar) ────────────────────────────────────────
   // Free at https://railradar.in/login
@@ -84,38 +79,30 @@ export function getConfigNum(key) {
  * Only fills keys that are currently empty — never overwrites user preferences.
  */
 export function applyDefaultsOnce() {
-  // One-time migration: v2.0 changed default AI provider from Gemini to Bynara/Mistral
   let configVersion = localStorage.getItem("_config_version");
-  if (configVersion !== "2.0" && configVersion !== "2.1") {
-    // Force-update AI settings if they were the old Gemini defaults
-    const oldKey = localStorage.getItem("ai_api_key");
+  if (configVersion !== "2.4") {
+    // Force-update AI settings to Bynara Router (Gemini removed in v2.2,
+    // Groq rate-limited in v2.3, Bynara default from v2.4).
+    // Only overwrite if the stored values are old defaults or missing.
     const oldProvider = localStorage.getItem("ai_provider");
-    if (!oldKey || oldKey.startsWith("AQ.") || oldProvider === "gemini") {
+    const oldModel = localStorage.getItem("ai_model");
+    if (!oldProvider || oldProvider === "gemini" || oldModel === "llama-3.3-70b-versatile" || oldModel === "gemini-2.5-flash" || oldModel === "qwen/qwen3.6-27b" || !oldModel) {
       localStorage.setItem("ai_provider",  DEFAULT_CONFIG.ai_provider);
       localStorage.setItem("ai_model",     DEFAULT_CONFIG.ai_model);
       localStorage.setItem("ai_base_url",  DEFAULT_CONFIG.ai_base_url);
       localStorage.setItem("ai_api_key",   DEFAULT_CONFIG.ai_api_key);
     }
+    // Remove the now-unused separate image AI settings
+    localStorage.removeItem("image_ai_provider");
+    localStorage.removeItem("image_ai_model");
+    localStorage.removeItem("image_ai_api_key");
+    localStorage.removeItem("gemini_api_key");
+    localStorage.setItem("_config_version", "2.4");
   }
 
   for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
     if (!localStorage.getItem(key) && value !== "") {
       localStorage.setItem(key, String(value));
     }
-  }
-
-  // Migration: v2.1 added separate image AI provider (Gemini) for vision tasks
-  configVersion = localStorage.getItem("_config_version");
-  if (configVersion !== "2.1") {
-    if (!localStorage.getItem("image_ai_provider")) {
-      localStorage.setItem("image_ai_provider", DEFAULT_CONFIG.image_ai_provider);
-    }
-    if (!localStorage.getItem("image_ai_model")) {
-      localStorage.setItem("image_ai_model", DEFAULT_CONFIG.image_ai_model);
-    }
-    if (!localStorage.getItem("image_ai_api_key")) {
-      localStorage.setItem("image_ai_api_key", DEFAULT_CONFIG.image_ai_api_key);
-    }
-    localStorage.setItem("_config_version", "2.1");
   }
 }

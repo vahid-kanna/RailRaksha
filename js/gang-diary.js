@@ -1,7 +1,7 @@
 /**
  * RailRaksha — Voice-to-Gang-Diary (gang-diary.js)
  * Converts spoken Telugu/English input → structured gang diary entry
- * using Gemini 1.5 Flash.
+ * using Groq AI (qwen/qwen3.6-27b).
  */
 
 import { saveDiaryEntry, getDiaryEntries } from './db.js';

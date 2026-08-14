@@ -25,11 +25,11 @@
   <!-- CSP Meta Tag -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' 'unsafe-inline' https://api.groq.com https://router.bynara.id https://generativelanguage.googleapis.com https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
+    script-src 'self' 'unsafe-inline' https://api.groq.com https://router.bynara.id https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
     img-src 'self' data: blob:;
-    connect-src 'self' https://api.groq.com https://router.bynara.id https://generativelanguage.googleapis.com https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
+    connect-src 'self' https://api.groq.com https://router.bynara.id https://api.railradar.in https://api.openweathermap.org https://enquiry.indianrail.gov.in https://corsproxy.io;
     media-src 'self';
     worker-src 'self' blob:;
   ">
@@ -343,7 +343,7 @@
       <!-- AI Analysis Result Card -->
       <div id="defect-analysis-card" class="defect-analysis-card">
         <div class="analysis-header">
-          <span class="ai-badge"><svg style="width:12px;height:12px;display:inline;vertical-align:middle"><use href="#icon-bot"/></svg> GEMINI AI</span>
+          <span class="ai-badge"><svg style="width:12px;height:12px;display:inline;vertical-align:middle"><use href="#icon-bot"/></svg> GROQ AI</span>
           <span class="analysis-title">Defect Analysis Result</span>
         </div>
 
@@ -839,13 +839,12 @@
             <label for="setting-ai_provider">AI Provider</label>
             <select id="setting-ai_provider" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text-primary);">
               <option value="openai_compatible">OpenAI Compatible (Groq, OpenAI, DeepSeek, etc.)</option>
-              <option value="gemini">Google Gemini</option>
             </select>
           </div>
 
           <div class="setting-item">
-            <label for="setting-ai_model">AI Model</label>
-            <input type="text" id="setting-ai_model" placeholder="llama-3.3-70b-versatile" autocomplete="off" />
+            <label for="setting-ai_model">AI Model (text + image)</label>
+            <input type="text" id="setting-ai_model" placeholder="mistral-medium-3-5" autocomplete="off" />
           </div>
 
           <div class="setting-item">
@@ -857,26 +856,6 @@
             <label for="setting-ai_api_key">Groq API Key</label>
             <input type="password" id="setting-ai_api_key" placeholder="gsk_..." autocomplete="off" />
             <button type="button" class="btn-toggle-visibility" data-target="setting-ai_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);cursor:pointer;">Show</button>
-          </div>
-
-          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-            <label style="font-size:13px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;display:block;">Image Analysis (Gemini)</label>
-          </div>
-
-          <div class="setting-item">
-            <label for="setting-image_ai_provider">Image AI Provider</label>
-            <input type="text" id="setting-image_ai_provider" placeholder="gemini" autocomplete="off" />
-          </div>
-
-          <div class="setting-item">
-            <label for="setting-image_ai_model">Image AI Model</label>
-            <input type="text" id="setting-image_ai_model" placeholder="gemini-2.5-flash" autocomplete="off" />
-          </div>
-
-          <div class="setting-item">
-            <label for="setting-image_ai_api_key">Gemini API Key</label>
-            <input type="password" id="setting-image_ai_api_key" placeholder="AIza..." autocomplete="off" />
-            <button type="button" class="btn-toggle-visibility" data-target="setting-image_ai_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);cursor:pointer;">Show</button>
           </div>
 
           <div class="setting-item">
