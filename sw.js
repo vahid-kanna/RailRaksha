@@ -8,7 +8,7 @@
  * Cache-first for static assets (icons, manifest).
  */
 
-const CACHE_NAME = 'railraksha-v2.9';
+const CACHE_NAME = 'railraksha-v3.1';
 
 const SHELL_ASSETS = [
   "/",
@@ -31,7 +31,8 @@ const DYNAMIC_ASSETS = [
   "/js/gang-diary.js",
   "/js/weather-alert.js",
   "/js/pw-manual.js",
-  "/js/db.js"
+  "/js/db.js",
+  "/js/icons.js"
 ];
 
 // Install — cache all assets
