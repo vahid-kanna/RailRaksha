@@ -13,11 +13,16 @@
 import { API_KEYS } from './config-keys.js';
 
 export const DEFAULT_CONFIG = {
-  // ── AI Provider (Groq) ──────────────────────────────────────────────────────
+  // ── AI Provider (Groq) — used for text tasks ──────────────────────────────
   ai_provider:  "openai_compatible",
   ai_model:     "llama-3.3-70b-versatile",
   ai_base_url:  "https://api.groq.com/openai/v1",
   ai_api_key:   API_KEYS.groq,
+
+  // ── Image AI Provider (Gemini) — used for vision/image tasks ──────────────
+  image_ai_provider: "gemini",
+  image_ai_model:    "gemini-2.5-flash",
+  image_ai_api_key:  API_KEYS.gemini,
 
   // ── Live Train Tracking (RailRadar) ────────────────────────────────────────
   // Free at https://railradar.in/login
@@ -98,5 +103,20 @@ export function applyDefaultsOnce() {
     if (!localStorage.getItem(key) && value !== "") {
       localStorage.setItem(key, String(value));
     }
+  }
+
+  // Migration: v2.1 added separate image AI provider (Gemini) for vision tasks
+  const configVersion = localStorage.getItem("_config_version");
+  if (configVersion !== "2.1") {
+    if (!localStorage.getItem("image_ai_provider")) {
+      localStorage.setItem("image_ai_provider", DEFAULT_CONFIG.image_ai_provider);
+    }
+    if (!localStorage.getItem("image_ai_model")) {
+      localStorage.setItem("image_ai_model", DEFAULT_CONFIG.image_ai_model);
+    }
+    if (!localStorage.getItem("image_ai_api_key")) {
+      localStorage.setItem("image_ai_api_key", DEFAULT_CONFIG.image_ai_api_key);
+    }
+    localStorage.setItem("_config_version", "2.1");
   }
 }

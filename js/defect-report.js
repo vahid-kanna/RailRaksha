@@ -82,33 +82,11 @@ Respond in this exact JSON format:
 
 If you cannot identify railway track defects or the image is unclear, set defectType to 'Image unclear - please retake' and severity to 'LOW'.`;
 
-  let finalPrompt = prompt;
-  let finalImageBase64 = capturedImageBase64;
-  
-  if (aiSettings.provider !== "gemini") {
-    finalPrompt = `You are an expert Indian Railways track engineer.
-[NOTE: Image analysis requires a vision model. The current provider does not support image analysis.]
-
-Please respond in this exact JSON format indicating that a vision model is required:
-{
-  "defectType": "Vision model required - Image not analyzed",
-  "severity": "LOW",
-  "irpwmCode": "N/A",
-  "confidence": "LOW",
-  "description": "Cannot analyze image with current AI provider. Please switch to Gemini for image analysis.",
-  "immediateAction": "Inspect track manually as per standard safety rules.",
-  "reportingRequired": true,
-  "speedRestriction": "None",
-  "irpwmReference": "N/A"
-}`;
-    finalImageBase64 = null;
-  }
-
   try {
-    console.log("Calling AI for track defect analysis...");
+    console.log("Calling AI for track defect analysis (image → Gemini)...");
     const analysis = await callAI({
-      prompt: finalPrompt,
-      imageBase64: finalImageBase64,
+      prompt,
+      imageBase64: capturedImageBase64,
       mimeType: capturedImageMime
     });
 
