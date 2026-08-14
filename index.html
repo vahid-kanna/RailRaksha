@@ -324,13 +324,26 @@
       </div>
 
       <!-- Photo Capture Zone -->
-      <div id="capture-zone" class="photo-capture-zone" role="button" tabindex="0" aria-label="Capture defect photo">
-        <input type="file" id="defect-file-input" accept="image/*" capture="environment" style="display:none" aria-label="Select photo" />
-        <div id="capture-icon" class="capture-icon"><svg><use href="#icon-camera"/></svg></div>
-        <div id="capture-text">
-          <div class="capture-title">Photograph the Defect</div>
-          <div class="capture-sub">Tap to open camera · AI will classify automatically</div>
+      <div id="capture-zone" class="photo-capture-zone">
+        <div id="capture-placeholder">
+          <div id="capture-icon" class="capture-icon"><svg><use href="#icon-camera"/></svg></div>
+          <div id="capture-text">
+            <div class="capture-title">Photograph the Defect</div>
+            <div class="capture-sub">Camera or upload · AI will classify automatically</div>
+          </div>
+          <div class="capture-options">
+            <button type="button" class="capture-btn" id="btn-camera">
+              <svg><use href="#icon-camera"/></svg>
+              <span>Camera</span>
+            </button>
+            <button type="button" class="capture-btn" id="btn-upload">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Upload</span>
+            </button>
+          </div>
         </div>
+        <input type="file" id="defect-file-input" accept="image/*" capture="environment" style="display:none" aria-label="Camera photo" />
+        <input type="file" id="defect-upload-input" accept="image/*" style="display:none" aria-label="Upload photo" />
         <img id="captured-image-preview" src="" alt="Captured defect photo" />
       </div>
 
@@ -343,7 +356,7 @@
       <!-- AI Analysis Result Card -->
       <div id="defect-analysis-card" class="defect-analysis-card">
         <div class="analysis-header">
-          <span class="ai-badge"><svg style="width:12px;height:12px;display:inline;vertical-align:middle"><use href="#icon-bot"/></svg> GROQ AI</span>
+          <span class="ai-badge"><svg style="width:12px;height:12px;display:inline;vertical-align:middle"><use href="#icon-bot"/></svg> BYNARA AI</span>
           <span class="analysis-title">Defect Analysis Result</span>
         </div>
 
@@ -693,7 +706,7 @@
         Gang Information
       </div>
       <div class="setting-item">
-        <label for="setting-mate_name">Mate Name (Gang Mate's Name)</label>
+        <label for="setting-mate_name">Gang Mate's Name</label>
         <input type="text" id="setting-mate_name" placeholder="Enter your name" />
       </div>
       <div class="setting-item">

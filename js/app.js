@@ -600,6 +600,9 @@ function getDefectElements() {
   return {
     captureZone: document.getElementById("capture-zone"),
     fileInput: document.getElementById("defect-file-input"),
+    uploadInput: document.getElementById("defect-upload-input"),
+    btnCamera: document.getElementById("btn-camera"),
+    btnUpload: document.getElementById("btn-upload"),
     imagePreview: document.getElementById("captured-image-preview"),
     captureIcon: document.getElementById("capture-icon"),
     captureText: document.getElementById("capture-text"),

@@ -1128,6 +1128,43 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-weight: 500;
 }
 
+/* Camera + Upload option buttons */
+.capture-options {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  justify-content: center;
+}
+
+.capture-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-soft);
+  border: 1px solid var(--color-brand);
+  color: var(--color-brand);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.capture-btn:hover {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+.capture-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.photo-capture-zone.has-photo #capture-placeholder {
+  display: none;
+}
+
 #captured-image-preview {
   width: 100%;
   max-height: 280px;
@@ -1606,6 +1643,37 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   color: var(--text-primary);
   font-weight: 500;
   margin-bottom: 10px;
+}
+
+/* Q&A formatting inside the manual answer card */
+.maa-body .qa-label {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--color-brand);
+  margin-right: 6px;
+  min-width: 24px;
+}
+
+.maa-body .qa-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.maa-body .qa-row:last-child { border-bottom: none; }
+
+.maa-body .qa-key {
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 140px;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.maa-body .qa-val {
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .maa-source {

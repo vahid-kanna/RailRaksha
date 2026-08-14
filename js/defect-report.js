@@ -17,17 +17,25 @@ export function initDefectReport(els) {
   elements = els;
   loadDefectHistory();
 
-  // Camera capture
-  elements.captureZone?.addEventListener("click", openCamera);
+  // Camera button — opens camera (capture="environment")
+  elements.btnCamera?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (capturedImageBase64) return;
+    elements.fileInput?.click();
+  });
+
+  // Upload button — opens file picker (no capture attr)
+  elements.btnUpload?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (capturedImageBase64) return;
+    elements.uploadInput?.click();
+  });
+
   elements.fileInput?.addEventListener("change", handleFileSelect);
+  elements.uploadInput?.addEventListener("change", handleFileSelect);
   elements.btnAnalyze?.addEventListener("click", analyzeDefect);
   elements.btnShareReport?.addEventListener("click", shareReport);
   elements.btnNewDefect?.addEventListener("click", resetDefectForm);
-}
-
-function openCamera() {
-  if (capturedImageBase64) return; // already has image
-  elements.fileInput?.click();
 }
 
 function handleFileSelect(e) {
@@ -268,6 +276,7 @@ function resetDefectForm() {
   if (elements.btnShareReport) elements.btnShareReport.style.display = "none";
   elements.defectAnalysisCard?.classList.remove("visible");
   if (elements.fileInput) elements.fileInput.value = "";
+  if (elements.uploadInput) elements.uploadInput.value = "";
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
