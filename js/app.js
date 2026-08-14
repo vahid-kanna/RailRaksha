@@ -16,6 +16,7 @@ import { initWeatherAlert }  from './weather-alert.js';
 import { initPWManual }      from './pw-manual.js';
 import { openDB, getSetting, setSetting } from './db.js';
 import { applyDefaultsOnce, getConfig } from './config.js';
+import { Icons, getStatusIcon, TrainTypeIcons } from './icons.js';
 
 // Make getConfig available globally for other modules
 window.getConfig = getConfig;
@@ -96,7 +97,7 @@ async function activateSession() {
   btn?.classList.remove("session-off");
   btn?.classList.add("session-on");
 
-  document.getElementById("smb-icon").textContent  = "🟢";
+  document.getElementById("smb-icon").innerHTML  = Icons.shield(24, '#10B981');
   document.getElementById("smb-dot").className     = "smb-status-dot dot-on";
   document.getElementById("smb-title").textContent = "MONITORING ACTIVE";
   document.getElementById("smb-sub").textContent   = "Train alerts ON — tap to end when leaving track";
@@ -110,7 +111,7 @@ async function activateSession() {
   // Start session timer
   startSessionTimer();
 
-  showToast("🛡️ Work session started — train alerts active!", "ok");
+  showToast("Work session started — train alerts active!", "ok");
 }
 
 async function deactivateSession() {
@@ -123,7 +124,7 @@ async function deactivateSession() {
   btn?.classList.remove("session-on", "session-danger");
   btn?.classList.add("session-off");
 
-  document.getElementById("smb-icon").textContent  = "🛡️";
+  document.getElementById("smb-icon").innerHTML  = Icons.shield(24, '#94A3B8');
   document.getElementById("smb-dot").className     = "smb-status-dot dot-off";
   document.getElementById("smb-title").textContent = "START WORK SESSION";
   document.getElementById("smb-sub").textContent   = "Tap when you go on track — alerts will activate";
@@ -142,11 +143,11 @@ async function deactivateSession() {
   // Reset track status
   updateStatusHero("OK", null);
   document.getElementById("train-list").innerHTML =
-    `<div class="empty-state"><div class="es-icon">🛡️</div>
+    `<div class="empty-state"><div class="es-icon">${Icons.shield(40, '#94A3B8')}</div>
      <div class="es-title">Session ended</div>
      <div class="es-sub">Tap "Start Work Session" when back on the track.</div></div>`;
 
-  showToast("✅ Work session ended. Stay safe!", "ok");
+  showToast("Work session ended. Stay safe!", "ok");
 }
 
 // ── Session Timer ─────────────────────────────────────────────────────────────
@@ -175,7 +176,7 @@ function setupTrainAlertUI() {
 
   document.getElementById("btn-refresh-trains")?.addEventListener("click", () => {
     checkBySchedule();
-    showToast("🔄 Refreshed", "ok");
+    showToast("Refreshed", "ok");
   });
 
   window.addEventListener("trainAlert", (e) => {
@@ -195,11 +196,11 @@ function flashSessionBtn(level) {
   if (level === "CRITICAL") {
     btn.classList.add("session-danger");
     document.getElementById("smb-dot").className = "smb-status-dot dot-crit";
-    document.getElementById("smb-icon").textContent = "🚨";
+    document.getElementById("smb-icon").innerHTML = Icons.siren(24, '#EF4444');
   } else if (level === "WARN") {
     btn.classList.remove("session-danger");
     document.getElementById("smb-dot").className = "smb-status-dot dot-warn";
-    document.getElementById("smb-icon").textContent = "⚠️";
+    document.getElementById("smb-icon").innerHTML = Icons.alertCircle(24, '#F97316');
   }
 }
 
@@ -229,13 +230,13 @@ function renderTrainList(trains) {
 
   list.innerHTML = "";
   if (trains.length === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="es-icon">🚂</div>
+    list.innerHTML = `<div class="empty-state"><div class="es-icon">${Icons.train(48, '#64748B')}</div>
       <div class="es-title">No more trains today</div>
       <div class="es-sub">All scheduled trains have passed. Resume carefully.</div></div>`;
     return;
   }
   if (relevant.length === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="es-icon">✅</div>
+    list.innerHTML = `<div class="empty-state"><div class="es-icon">${Icons.check(48, '#10B981')}</div>
       <div class="es-title">No trains in the next 2 hours</div>
       <div class="es-sub">Next train is ${laterCount > 0 ? "more than 2 hours away" : "not scheduled soon"}. Maintain vigilance.</div></div>`;
     return;
@@ -326,17 +327,17 @@ function updateStatusHero(level, nearestTrain) {
     level === "OK" ? "clear" : level === "CRITICAL" ? "danger" : "caution"}`;
 
   const alertMode = getConfig("alert_mode") || "station";
-  const modeLabel = alertMode === "station" ? "📡 Station Mode" : "📍 GPS Mode";
+  const modeLabel = alertMode === "station" ? "Station Mode" : "GPS Mode";
   const workMin = nearestTrain?.minutesToWork ?? nearestTrain?.minutesUntil;
 
   const cfg = {
-    OK:       { icon: "✅", label: "TRACK CLEAR",      sub: isWorkSessionActive() ? `${modeLabel} · SKM↔UPD section clear` : "Start session to enable alerts" },
-    PREPARE:  { icon: "⚠️", label: "TRAIN APPROACHING", sub: `${nearestTrain?.name} · ${workMin} min to section · ${nearestTrain?.nearStation || ""}` },
-    WARN:     { icon: "🟠", label: "MOVE OFF TRACK",   sub: `${nearestTrain?.name} · ${workMin} min · Move all tools off track NOW` },
-    CRITICAL: { icon: "🚨", label: "CLEAR TRACK NOW!", sub: `${nearestTrain?.name} · ALL WORKERS OFF TRACK IMMEDIATELY!` }
-  }[level] || { icon: "✅", label: "TRACK CLEAR", sub: "" };
+    OK:       { icon: Icons.check(32, '#10B981'), label: "TRACK CLEAR",      sub: isWorkSessionActive() ? `${modeLabel} · SKM↔UPD section clear` : "Start session to enable alerts" },
+    PREPARE:  { icon: Icons.alert(32, '#F59E0B'), label: "TRAIN APPROACHING", sub: `${nearestTrain?.name} · ${workMin} min to section · ${nearestTrain?.nearStation || ""}` },
+    WARN:     { icon: Icons.alertCircle(32, '#F97316'), label: "MOVE OFF TRACK",   sub: `${nearestTrain?.name} · ${workMin} min · Move all tools off track NOW` },
+    CRITICAL: { icon: Icons.siren(32, '#EF4444'), label: "CLEAR TRACK NOW!", sub: `${nearestTrain?.name} · ALL WORKERS OFF TRACK IMMEDIATELY!` }
+  }[level] || { icon: Icons.check(32, '#10B981'), label: "TRACK CLEAR", sub: "" };
 
-  document.getElementById("status-icon").textContent    = cfg.icon;
+  document.getElementById("status-icon").innerHTML    = cfg.icon;
   document.getElementById("status-label").textContent   = cfg.label;
   document.getElementById("status-sublabel").textContent = cfg.sub;
 }
@@ -346,7 +347,17 @@ function createTrainCard(train) {
   const alertClass = { CRITICAL:"alert-critical", WARN:"alert-warn", PREPARE:"alert-caution", OK:"alert-ok", PASSED:"alert-passed" }[train.alertLevel] || "alert-ok";
   card.className = `train-card ${alertClass} slide-in-up`;
 
-  const typeIcons = { RAJDHANI:"👑", SHATABDI:"⚡", VANDE_BHARAT:"🏅", DURONTO:"💨", MAIL:"📮", JAN_SHATABDI:"🎫", FREIGHT:"🚛", EXPRESS:"🚂", PASSENGER:"🚃" };
+  const typeIcons = { 
+    RAJDHANI: Icons.crown(16, '#FFD700'), 
+    SHATABDI: Icons.lightning(16, '#00D9FF'), 
+    VANDE_BHARAT: Icons.medal(16, '#FF6B00'), 
+    DURONTO: Icons.wind(16, '#06B6D4'), 
+    MAIL: Icons.mail(16, '#94A3B8'), 
+    JAN_SHATABDI: Icons.ticket(16, '#F59E0B'), 
+    FREIGHT: Icons.truck(16, '#EF4444'), 
+    EXPRESS: Icons.train(16, '#10B981'), 
+    PASSENGER: Icons.train(16, '#64748B') 
+  };
   const dirClass  = train.dir === "D" ? "dir-down" : "dir-up";
 
   // Timing display — show work section ETA if in station mode
@@ -366,21 +377,21 @@ function createTrainCard(train) {
 
   // Non-stopping trains are most dangerous — show warning badge
   const stopBadge = train.stops === false
-    ? `<div style="background:rgba(239,68,68,0.2);color:#ef4444;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-top:2px;">⚡ NON-STOP · ${train.speed} km/h</div>`
+    ? `<div style="background:rgba(239,68,68,0.2);color:#ef4444;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-top:2px;">${Icons.lightning(10, '#EF4444')} NON-STOP · ${train.speed} km/h</div>`
     : `<div style="background:rgba(16,185,129,0.15);color:#10b981;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;margin-top:2px;">STOPS at SKM</div>`;
 
   // Station estimation badge
   const stationBadge = train.nearStation
-    ? `<div style="font-size:10px;color:var(--text-sub);margin-top:2px;">📍 ${train.nearStation} · ~${train.kmFromSKM} km</div>`
+    ? `<div style="font-size:10px;color:var(--text-sub);margin-top:2px;">${Icons.location(10, '#94A3B8')} ${train.nearStation} · ~${train.kmFromSKM} km</div>`
     : "";
 
   card.innerHTML = `
     <div class="train-dir-badge ${dirClass}">
-      <span class="dir-icon">${train.dir === "D" ? "⬇️" : "⬆️"}</span>
+      <span class="dir-icon">${train.dir === "D" ? Icons.arrowDown(14, 'currentColor') : Icons.arrowUp(14, 'currentColor')}</span>
       <span>${train.dir === "D" ? "↓ GDR" : "↑ BZA"}</span>
     </div>
     <div class="train-info">
-      <div class="train-name">${typeIcons[train.type] || "🚂"} ${train.name}</div>
+      <div class="train-name">${typeIcons[train.type] || Icons.train(16, '#10B981')} ${train.name}</div>
       <div class="train-number">#${train.no} · ${train.type}</div>
       <div class="train-route">${train.from} → ${train.to}</div>
       ${stopBadge}
@@ -397,11 +408,11 @@ function showEmergencyBanner(train, level) {
   const etaMin = train?.inSection ? null : (alertMode === "station" ? (train?.minutesToWork ?? train?.minutesUntil) : train?.minutesUntil);
   const etaText = etaMin === null ? "IN SECTION" : `${etaMin} min`;
   const msgs = {
-    PREPARE:  { icon: "⚠️", title: `Train approaching — ${etaText}`, sub: `${train?.name} — Prepare to clear track` },
-    WARN:     { icon: "🟠", title: `ALERT — Move off track!`, sub: `${train?.name} — Tools off track NOW!` },
-    CRITICAL: { icon: "🚨", title: "CLEAR TRACK NOW!", sub: `${train?.name} — ALL WORKERS OFF TRACK!` }
+    PREPARE:  { icon: Icons.alert(40, '#F59E0B'), title: `Train approaching — ${etaText}`, sub: `${train?.name} — Prepare to clear track` },
+    WARN:     { icon: Icons.alertCircle(40, '#F97316'), title: `ALERT — Move off track!`, sub: `${train?.name} — Tools off track NOW!` },
+    CRITICAL: { icon: Icons.siren(40, '#EF4444'), title: "CLEAR TRACK NOW!", sub: `${train?.name} — ALL WORKERS OFF TRACK!` }
   }[level] || {};
-  banner.querySelector(".emergency-icon").textContent    = msgs.icon  || "🚨";
+  banner.querySelector(".emergency-icon").innerHTML    = msgs.icon  || Icons.siren(40, '#EF4444');
   banner.querySelector(".emergency-title").textContent   = msgs.title || "";
   banner.querySelector(".emergency-subtitle").textContent = msgs.sub  || "";
   banner.classList.add("active");
@@ -415,7 +426,7 @@ function startGPSTracking() {
     (pos) => {
       window._lastGPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       const gpsEl = document.getElementById("gps-label");
-      if (gpsEl) gpsEl.textContent = `📍 ${pos.coords.latitude.toFixed(4)}°N`;
+      if (gpsEl) gpsEl.innerHTML = `${Icons.location(16, 'currentColor')} ${pos.coords.latitude.toFixed(4)}°N`;
     },
     () => { window._lastGPS = null; },
     { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
@@ -495,7 +506,7 @@ function setupApiKeysSection() {
         // Fill in current values
         fillApiKeyFields();
       } else if (entered !== null) {
-        showToast("❌ Incorrect password", "error");
+        showToast("Incorrect password", "error");
       }
     } else {
       // Lock again
@@ -574,7 +585,7 @@ function saveSettings() {
     }
   });
   document.getElementById("settings-overlay")?.classList.remove("active");
-  showToast("✅ Settings saved!", "ok");
+  showToast("Settings saved!", "ok");
   updateHeaderName();
 }
 
@@ -593,8 +604,13 @@ function setupToastSystem() {
 function showToast(msg, type = "info") {
   const toast = document.getElementById("toast");
   if (!toast) return;
-  const icons = { ok:"✅", warn:"⚠️", error:"❌", info:"ℹ️" };
-  toast.querySelector(".toast-icon").textContent = icons[type] || "ℹ️";
+  const icons = { 
+    ok: Icons.check(20, '#10B981'), 
+    warn: Icons.alert(20, '#F59E0B'), 
+    error: Icons.alertCircle(20, '#EF4444'), 
+    info: Icons.info(20, '#06B6D4') 
+  };
+  toast.querySelector(".toast-icon").innerHTML = icons[type] || Icons.info(20, '#06B6D4');
   toast.querySelector(".toast-msg").textContent  = msg;
   toast.classList.add("show");
   setTimeout(() => toast.classList.remove("show"), 3500);

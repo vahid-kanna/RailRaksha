@@ -318,7 +318,7 @@ export function getActiveTrains() {
       // Find approximate current station name
       let nearStation = "";
       if (inSection) {
-        nearStation = "⚠️ INSIDE SKM↔UPD section";
+        nearStation = "INSIDE SKM↔UPD section";
       } else if (minUntil > 0) {
         if (kmFromSKM < 5)        nearStation = "near SKM";
         else if (kmFromSKM < 18)  nearStation = t.dir === "D" ? "near Ammanabrolu"   : "near Ulavapadu";

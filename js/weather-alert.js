@@ -4,6 +4,8 @@
  * Singarayakonda, Prakasam District, Andhra Pradesh.
  */
 
+import { Icons } from './icons.js';
+
 const OWM_API_URL = "https://api.openweathermap.org/data/2.5/weather";
 const FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast";
 // Singarayakonda coordinates
@@ -46,7 +48,7 @@ function renderWeather(current, forecast) {
   const icon = getWeatherEmoji(weather?.main || "Clear");
 
   // Update hero card
-  if (elements.weatherIcon) elements.weatherIcon.textContent = icon;
+  if (elements.weatherIcon) elements.weatherIcon.innerHTML = icon;
   if (elements.weatherTemp) elements.weatherTemp.textContent = `${temp}°C`;
   if (elements.weatherDesc) elements.weatherDesc.textContent = desc.charAt(0).toUpperCase() + desc.slice(1);
   if (elements.weatherHumidity) elements.weatherHumidity.textContent = `${humidity}%`;
@@ -59,8 +61,18 @@ function renderWeather(current, forecast) {
 }
 
 function getWeatherEmoji(main) {
-  const map = { Clear: "☀️", Clouds: "⛅", Rain: "🌧️", Thunderstorm: "⛈️", Drizzle: "🌦️", Mist: "🌫️", Haze: "🌫️", Fog: "🌫️", Snow: "❄️" };
-  return map[main] || "🌤️";
+  const map = { 
+    Clear: Icons.sun(28, '#F59E0B'), 
+    Clouds: Icons.cloud(28, '#94A3B8'), 
+    Rain: Icons.rain(28, '#06B6D4'), 
+    Thunderstorm: Icons.lightning(28, '#F59E0B'), 
+    Drizzle: Icons.rain(28, '#06B6D4'), 
+    Mist: Icons.cloud(28, '#64748B'), 
+    Haze: Icons.cloud(28, '#64748B'), 
+    Fog: Icons.cloud(28, '#64748B'), 
+    Snow: Icons.cloud(28, '#E2E8F0') 
+  };
+  return map[main] || Icons.sun(28, '#94A3B8');
 }
 
 function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
@@ -78,7 +90,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "sun_kink",
       level: "high",
-      icon: "🔥",
+      icon: Icons.sun(24, '#EF4444'),
       title: "Sun Kink (Rail Buckling) Risk",
       desc: `Estimated rail temperature: ${railTemp}°C. IRPWM mandates hot-weather patrolling when rail temp exceeds 65°C. Immediate inspection of curves and points required.`,
       action: "Inspect curves km 232–237. Apply oil to rail joints. Report to PWI.",
@@ -88,7 +100,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "sun_kink_warn",
       level: "medium",
-      icon: "☀️",
+      icon: Icons.sun(24, '#F59E0B'),
       title: "Elevated Rail Temperature",
       desc: `Estimated rail temperature: ${railTemp}°C. Monitor curves for rail creep and expansion.`,
       action: "Verify rail joints clearance on curves. Alert lookout man.",
@@ -101,7 +113,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "flood",
       level: "high",
-      icon: "🚨",
+      icon: Icons.siren(24, '#EF4444'),
       title: "FLOOD RISK — Heavy Rainfall Alert",
       desc: `Current rainfall: ${rainfall.toFixed(1)} mm/hr (>50mm threshold). Singarayakonda low-lying sections (km 232, km 237) and Bridge 47 approach are HIGH RISK for waterlogging.`,
       action: "IMMEDIATE: Inspect Bridge 47, km 232 low-section, km 237 embankment. Inform PWI if water level approaches rail.",
@@ -111,7 +123,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "rain_watch",
       level: "medium",
-      icon: "🌧️",
+      icon: Icons.rain(24, '#06B6D4'),
       title: "Monsoon Watch — Moderate Rainfall",
       desc: `Rainfall: ${rainfall.toFixed(1)} mm/hr. Monsoon season vulnerability active. Monitor drains and bridge scour points.`,
       action: "Check drain clearance at km 233. Monitor bridge 47 foundation.",
@@ -124,7 +136,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "scour",
       level: "high",
-      icon: "🌊",
+      icon: Icons.rain(24, '#06B6D4'),
       title: "Bridge Scour Alert",
       desc: "Heavy rainfall increases scour risk at bridge foundations. Krishnapatnam catchment area drains through this section.",
       action: "Inspect waterway below Bridge 47. Check for undermining of abutments. Report abnormalities.",
@@ -137,7 +149,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "cyclone",
       level: "high",
-      icon: "🌀",
+      icon: Icons.wind(24, '#EF4444'),
       title: "High Wind Alert — Cyclone Precautions",
       desc: `Wind speed: ${windSpeed} km/h. Prakasam district is in the Bay of Bengal cyclone belt. Flying debris is a hazard to track workers.`,
       action: "Suspend overhead work. Clear loose materials from track. Seek shelter if wind exceeds 80 km/h.",
@@ -150,7 +162,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
     risks.push({
       id: "ok",
       level: "low",
-      icon: "✅",
+      icon: Icons.check(24, '#10B981'),
       title: "Track Conditions — Normal",
       desc: `Temperature: ${temp}°C, Humidity: ${humidity}%, Wind: ${windSpeed} km/h. No immediate weather hazards detected.`,
       action: "Normal maintenance operations. Maintain standard lookout procedures.",
@@ -167,7 +179,7 @@ function analyzeRisks(temp, humidity, rainfall, windSpeed, forecast) {
       risks.push({
         id: "forecast_rain",
         level: "medium",
-        icon: "🔮",
+        icon: Icons.rain(24, '#F59E0B'),
         title: `Heavy Rain Forecast — In ${hrs} Hours`,
         desc: `IMD forecast: ${(upcomingRain.rain?.["3h"] || 0).toFixed(0)}mm expected in next 3 hours. Prepare monsoon precautions.`,
         action: "Complete exposed track work before rain arrives. Clear all drainage channels.",
@@ -204,20 +216,20 @@ function showOfflineWeather() {
   const isMonsoon = month >= 6 && month <= 10;
   const isSummer = month >= 3 && month <= 5;
 
-  if (elements.weatherIcon) elements.weatherIcon.textContent = isMonsoon ? "🌧️" : isSummer ? "☀️" : "⛅";
+  if (elements.weatherIcon) elements.weatherIcon.innerHTML = isMonsoon ? Icons.rain(28, '#06B6D4') : isSummer ? Icons.sun(28, '#F59E0B') : Icons.cloud(28, '#94A3B8');
   if (elements.weatherTemp) elements.weatherTemp.textContent = isSummer ? "38°C" : isMonsoon ? "28°C" : "30°C";
   if (elements.weatherDesc) elements.weatherDesc.textContent = isMonsoon ? "Monsoon Season — Set OWM key for live data" : "Add OpenWeatherMap API key for live weather";
 
   const seasonRisks = isMonsoon
-    ? [{ id:"monsoon",level:"medium",icon:"🌧️",title:"Monsoon Season Active",desc:"June–October: High risk period for Prakasam district. Cyclonic rainfall, bridge scour, embankment erosion.",action:"Daily inspection of Bridge 47 and low-lying sections. Clear drainage channels weekly.",irpwm:"IRPWM Para 2.11" }]
+    ? [{ id:"monsoon",level:"medium",icon:Icons.rain(24, '#06B6D4'),title:"Monsoon Season Active",desc:"June–October: High risk period for Prakasam district. Cyclonic rainfall, bridge scour, embankment erosion.",action:"Daily inspection of Bridge 47 and low-lying sections. Clear drainage channels weekly.",irpwm:"IRPWM Para 2.11" }]
     : isSummer
-    ? [{ id:"summer",level:"medium",icon:"☀️",title:"Summer Hot Weather Patrolling",desc:"March–May: Rail temperatures can exceed 65°C. Sun kink risk on curves.",action:"Hot weather patrolling on curves km 233–235. Check rail joint expansion gaps.",irpwm:"IRPWM Para 2.9" }]
-    : [{ id:"ok",level:"low",icon:"✅",title:"Normal Season",desc:"Standard maintenance conditions. Add OWM API key for live weather data.",action:"Continue regular gang patrol.",irpwm:"Standard patrol schedule" }];
+    ? [{ id:"summer",level:"medium",icon:Icons.sun(24, '#F59E0B'),title:"Summer Hot Weather Patrolling",desc:"March–May: Rail temperatures can exceed 65°C. Sun kink risk on curves.",action:"Hot weather patrolling on curves km 233–235. Check rail joint expansion gaps.",irpwm:"IRPWM Para 2.9" }]
+    : [{ id:"ok",level:"low",icon:Icons.check(24, '#10B981'),title:"Normal Season",desc:"Standard maintenance conditions. Add OWM API key for live weather data.",action:"Continue regular gang patrol.",irpwm:"Standard patrol schedule" }];
 
   renderRisks(seasonRisks);
   // Add pre-monsoon checklist reminder
   if (month === 5) {
-    const risks = seasonRisks.concat([{id:"premonsoon",level:"high",icon:"📋",title:"Pre-Monsoon Checklist Due",desc:"May: Annual pre-monsoon track inspection and drain clearance must be completed before June 1.",action:"Submit completed SEN Form 1 (Pre-monsoon inspection) to AEN.",irpwm:"IRPWM Para 2.11.1"}]);
+    const risks = seasonRisks.concat([{id:"premonsoon",level:"high",icon:Icons.cloud(24, '#EF4444'),title:"Pre-Monsoon Checklist Due",desc:"May: Annual pre-monsoon track inspection and drain clearance must be completed before June 1.",action:"Submit completed SEN Form 1 (Pre-monsoon inspection) to AEN.",irpwm:"IRPWM Para 2.11.1"}]);
     renderRisks(risks);
   }
 }

@@ -32,7 +32,7 @@ export async function callAI({ prompt, imageBase64 = null, mimeType = "image/jpe
   if (imageBase64) {
     // ── Vision task → always use Gemini ──────────────────────────────
     if (!settings.imgApiKey) {
-      throw new Error("Missing Gemini API key for image analysis. Check Settings ⚙️.");
+      throw new Error("Missing Gemini API key for image analysis. Check Settings.");
     }
     return await callGeminiAPI({
       apiKey: settings.imgApiKey,
@@ -44,7 +44,7 @@ export async function callAI({ prompt, imageBase64 = null, mimeType = "image/jpe
   } else {
     // ── Text task → use configured provider (Groq by default) ────────
     if (!settings.apiKey && settings.provider !== "ollama") {
-      throw new Error("Missing AI API Key. Please configure your key in Settings ⚙️.");
+      throw new Error("Missing AI API Key. Please configure your key in Settings.");
     }
     if (settings.provider === "gemini") {
       return await callGeminiAPI({

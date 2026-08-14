@@ -5,6 +5,7 @@
 
 import { saveDefectReport, getDefectReports, updateDefectStatus } from './db.js';
 import { callAI, getAISettings } from './ai-engine.js';
+import { Icons } from './icons.js';
 
 let capturedImageBase64 = null;
 let capturedImageMime = "image/jpeg";
@@ -55,10 +56,10 @@ function displayPreview(dataUrl) {
 // ── AI call ──────────────────────────────────────────────────────────
 
 async function analyzeDefect() {
-  if (!capturedImageBase64) { showToast("📷 Please capture a photo first", "warn"); return; }
+  if (!capturedImageBase64) { showToast("Please capture a photo first", "warn"); return; }
   const aiSettings = getAISettings();
   if (!aiSettings.apiKey && aiSettings.provider !== "ollama") {
-    showToast("⚙️ Please configure your AI API key in Settings", "warn");
+    showToast("Please configure your AI API key in Settings", "warn");
     return;
   }
 
@@ -99,7 +100,7 @@ If you cannot identify railway track defects or the image is unclear, set defect
 
   } catch (err) {
     showAnalyzingOverlay(false);
-    showToast("❌ Analysis failed: " + err.message, "error");
+    showToast("Analysis failed: " + err.message, "error");
     console.error("Defect analysis error:", err);
   }
 }
@@ -111,7 +112,7 @@ function displayAnalysis(analysis) {
   if (elements.defectTypeBadge) {
     const cls = { CRITICAL: "severity-critical", HIGH: "severity-high", MEDIUM: "severity-medium", LOW: "severity-low" };
     elements.defectTypeBadge.className = `defect-type-badge ${cls[analysis.severity] || "severity-low"}`;
-    elements.defectTypeBadge.textContent = `${severityIcon(analysis.severity)} ${analysis.defectType}`;
+    elements.defectTypeBadge.innerHTML = `${severityIcon(analysis.severity)} ${analysis.defectType}`;
   }
 
   // Detail rows
@@ -138,7 +139,12 @@ function displayAnalysis(analysis) {
 }
 
 function severityIcon(severity) {
-  return { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🟢" }[severity] || "⚪";
+  return { 
+    CRITICAL: Icons.dot(12, '#EF4444'), 
+    HIGH: Icons.dot(12, '#F97316'), 
+    MEDIUM: Icons.dot(12, '#F59E0B'), 
+    LOW: Icons.dot(12, '#10B981') 
+  }[severity] || Icons.dot(12, '#94A3B8');
 }
 
 function setText(el, text) {
@@ -178,7 +184,7 @@ async function shareReport() {
   if (navigator.share) {
     try {
       await navigator.share({ title: "Track Defect Report — RailRaksha", text: reportText });
-      showToast("✅ Report shared successfully", "ok");
+      showToast("Report shared successfully", "ok");
       loadDefectHistory();
       return;
     } catch {}
@@ -186,7 +192,7 @@ async function shareReport() {
 
   // Fallback: copy to clipboard
   navigator.clipboard?.writeText(reportText).then(() => {
-    showToast("📋 Report copied to clipboard", "ok");
+    showToast("Report copied to clipboard", "ok");
     loadDefectHistory();
   });
 }
@@ -233,7 +239,7 @@ async function loadDefectHistory() {
   elements.defectHistoryList.innerHTML = "";
 
   if (reports.length === 0) {
-    elements.defectHistoryList.innerHTML = `<div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">No defects reported yet</div><div class="es-sub">Photograph and report track defects here</div></div>`;
+    elements.defectHistoryList.innerHTML = `<div class="empty-state"><div class="es-icon">${Icons.search(40, '#64748B')}</div><div class="es-title">No defects reported yet</div><div class="es-sub">Photograph and report track defects here</div></div>`;
     return;
   }
 
@@ -245,7 +251,7 @@ async function loadDefectHistory() {
       <div class="defect-thumb">${severityIcon(r.severity)}</div>
       <div class="defect-info">
         <div class="defect-name">${r.defectType}</div>
-        <div class="defect-loc">📍 ${r.gps || "GPS pending"} · ${new Date(r.date).toLocaleDateString("en-IN")}</div>
+        <div class="defect-loc">${r.gps || "GPS pending"} · ${new Date(r.date).toLocaleDateString("en-IN")}</div>
       </div>
       <span class="defect-status-badge ${statusClass}">${r.status}</span>`;
     elements.defectHistoryList.appendChild(item);

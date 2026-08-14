@@ -5,6 +5,7 @@
  */
 
 import { callAI, getAISettings } from './ai-engine.js';
+import { Icons } from './icons.js';
 
 let elements = {};
 let isVoiceSearching = false;
@@ -110,7 +111,7 @@ function showRuleAnswer(rule) {
 function startVoiceSearch() {
   if (isVoiceSearching) return;
   if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-    showToast("🎙️ Voice not supported — type your question", "warn");
+    showToast("Voice not supported — type your question", "warn");
     elements.searchInput?.focus();
     return;
   }
@@ -131,7 +132,7 @@ function startVoiceSearch() {
   rec.onerror = () => {
     isVoiceSearching = false;
     elements.btnVoiceSearch.style.opacity = "1";
-    showToast("🎙️ Voice failed — type your question", "warn");
+    showToast("Voice failed — type your question", "warn");
     elements.searchInput?.focus();
   };
   rec.start();
@@ -152,7 +153,7 @@ async function submitSearch() {
 
   const aiSettings = getAISettings();
   if (!aiSettings.apiKey && aiSettings.provider !== "ollama") {
-    showToast("⚙️ Set your AI API key in Settings for custom queries", "warn");
+    showToast("Set your AI API key in Settings for custom queries", "warn");
     return;
   }
 
@@ -184,7 +185,7 @@ Keep your answer under 200 words. Be specific and actionable.`;
     elements.manualAnswerCard?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (err) {
     showAnalyzingOverlay(false);
-    showToast("❌ Query failed: " + err.message, "error");
+    showToast("Query failed: " + err.message, "error");
     console.error("AI Error in PW Manual search:", err);
   }
 }

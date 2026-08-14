@@ -326,9 +326,9 @@ function vibrateAlert(level) {
 function pushNotification(train, level, source) {
   if (Notification.permission !== "granted") return;
   const msgs = {
-    PREPARE:  { title: `⚠️ ${train.name} — Approaching (${source})`,          body: `Train is within 15 km. Prepare to clear the track.` },
-    WARN:     { title: `🟠 ${train.name} — 8 km away!`,                       body: `${source === "live" ? "Live GPS:" : "Schedule:"} Move all tools off track NOW.` },
-    CRITICAL: { title: `🚨 CLEAR TRACK! ${train.name} — ${source === "live" ? "4 km" : "< 7 min"}!`, body: `ALL WORKERS OFF THE TRACK IMMEDIATELY!` }
+    PREPARE:  { title: `${train.name} — Approaching (${source})`,          body: `Train is within 15 km. Prepare to clear the track.` },
+    WARN:     { title: `${train.name} — 8 km away!`,                       body: `${source === "live" ? "Live GPS:" : "Schedule:"} Move all tools off track NOW.` },
+    CRITICAL: { title: `CLEAR TRACK! ${train.name} — ${source === "live" ? "4 km" : "< 7 min"}!`, body: `ALL WORKERS OFF THE TRACK IMMEDIATELY!` }
   };
   const msg = msgs[level];
   if (msg) {
