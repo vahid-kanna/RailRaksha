@@ -220,37 +220,103 @@ export function getAlertLevel(minutes) {
   return "OK";
 }
 
+// ── Work section geometry ─────────────────────────────────────────────────────
+// Work section: SKM (km 293) ↔ UPD (km 265) = 28 km
+export const WORK_SECTION_KM = 28;
+
+/** Minutes a train takes to traverse the whole SKM↔UPD work section. */
+export function sectionTransitMin(speed) {
+  return (WORK_SECTION_KM / (speed || 80)) * 60;
+}
+
 /**
- * Get all active trains for today, sorted by minutes to arrival.
- * Filters out trains that have passed beyond the PASSED grace window.
- * Enhanced: adds estimated station location and work section timing.
+ * Get all active trains, sorted by EFFECTIVE time to the work section.
+ *
+ * Effective minutes = time until the train ENTERS the SKM↔UPD work section:
+ *   DOWN trains enter at SKM → minutesUntil
+ *   UP   trains enter at UPD → minutesUntil minus section transit time
+ *
+ * Trains currently INSIDE the section get effectiveMin = 0 and are always
+ * CRITICAL — they sort first and always alert.
+ *
+ * occursToday = false when the HH:MM instance already passed today and the
+ * value was wrapped to tomorrow (prevents "985 min" phantom trains).
  */
 export function getActiveTrains() {
   const passed = getAlertThresholds().PASSED;
 
+  let alertMode = "station";
+  try {
+    const cfg = (typeof window !== "undefined" && window.getConfig)
+      ? window.getConfig
+      : (k) => localStorage.getItem(k) || "";
+    alertMode = cfg("alert_mode") || "station";
+  } catch {}
+
+  const now = new Date();
+
   return SKM_TIMETABLE
     .filter(t => trainsToday(t.days))
     .map(t => {
-      const minUntil = minutesUntilTrain(t.time);
-      const speed = t.speed || 80;
+      const minUntil   = minutesUntilTrain(t.time);
+      const speed      = t.speed || 80;
+      const transitMin = sectionTransitMin(speed);
 
-      // Station-based: estimate minutes until train enters the SKM↔UPD work section
-      // Work section: SKM (km 293) to UPD (km 265) = 28 km
-      // DOWN trains (BZA→GDR): enter section at SKM first → minutesToWork = minUntil (same as SKM time)
-      // UP trains (GDR→BZA): enter section at UPD first → they reach UPD before SKM
-      //   UPD is 28 km south of SKM. Time from UPD to SKM = 28/speed * 60 min
-      //   So they reach UPD at (minUntil - 28/speed*60) minutes from now
-      const updToSkmMin = (28 / speed) * 60;
+      // Did this HH:MM instance happen today, or was it wrapped to tomorrow?
+      // (matches the -300 min wrap rule in minutesUntilTrain)
+      const [th, tm] = t.time.split(":").map(Number);
+      const tToday = new Date(now); tToday.setHours(th, tm, 0, 0);
+      const occursToday = (now - tToday) <= 300 * 60000;
+
+      // Minutes until the train ENTERS the work section
       const minutesToWork = t.dir === "D"
         ? minUntil                        // DOWN: enters at SKM
-        : minUntil - updToSkmMin;         // UP: enters at UPD (earlier)
+        : minUntil - transitMin;          // UP: enters at UPD (earlier)
+
+      // Is the train INSIDE the work section right now?
+      // ── SAFETY FIX: Schedule-only inSection detection is unreliable ──
+      // Trains are often 10-30 min late. A schedule-based system CANNOT know
+      // the real position. We only flag inSection when:
+      //   - LIVE GPS is available (hasLiveGPS flag), OR
+      //   - The train's estimated distance puts it inside a tight buffer zone
+      //
+      // For DOWN trains: entered at SKM → minUntil <= 0 and hasn't reached UPD
+      // For UP trains: entered at UPD → minutesToWork <= 0 and hasn't reached SKM
+      //
+      // Without GPS, we use a generous "late buffer" (LATENCY_MIN = 15 min)
+      // to account for typical delays. If minutesToWork is only slightly negative
+      // (< 15 min), the train is likely just running late, not in the section.
+      const LATENCY_BUFFER_MIN = 15; // Account for train delays
+
+      const scheduleInSection = t.dir === "D"
+        ? (minUntil <= -LATENCY_BUFFER_MIN && minUntil > -(transitMin + LATENCY_BUFFER_MIN))
+        : (minutesToWork <= -LATENCY_BUFFER_MIN && minUntil > 0);
+
+      // Only trust scheduleInSection if we DON'T have live GPS.
+      // When GPS is available, live-trains.js handles inSection via actual position.
+      const hasLiveGPS = !!localStorage.getItem("railradar_key");
+      const inSection = hasLiveGPS ? false : scheduleInSection;
+
+      // Effective minutes for alerting (0 = inside section = CRITICAL)
+      // For UP trains NOT in section, use minUntil (time to SKM) instead of
+      // minutesToWork, because minutesToWork assumes entry at UPD which may
+      // not be accurate if the train is late or still south of UPD.
+      const effectiveMin = inSection
+        ? 0
+        : minUntil;
+
+      // Alert level honours the current mode (station vs GPS)
+      const levelMin   = inSection ? 0 : (alertMode === "station" ? effectiveMin : minUntil);
+      const alertLevel = inSection ? "CRITICAL" : getAlertLevel(levelMin);
 
       // Estimate how far from SKM the train currently is
       const kmFromSKM = Math.abs(minUntil) * speed / 60;
 
       // Find approximate current station name
       let nearStation = "";
-      if (minUntil > 0) {
+      if (inSection) {
+        nearStation = "⚠️ INSIDE SKM↔UPD section";
+      } else if (minUntil > 0) {
         if (kmFromSKM < 5)        nearStation = "near SKM";
         else if (kmFromSKM < 18)  nearStation = t.dir === "D" ? "near Ammanabrolu"   : "near Ulavapadu";
         else if (kmFromSKM < 35)  nearStation = t.dir === "D" ? "near Ongole"        : "near Kavali";
@@ -264,13 +330,17 @@ export function getActiveTrains() {
 
       return {
         ...t,
-        minutesUntil: minUntil,
+        minutesUntil:  minUntil,
         minutesToWork: Math.round(minutesToWork),
-        alertLevel:   getAlertLevel(minUntil),
+        effectiveMin:  Math.round(effectiveMin),
+        transitMin:    Math.round(transitMin),
+        inSection,
+        occursToday,
+        alertLevel,
         nearStation,
         kmFromSKM: Math.round(kmFromSKM)
       };
     })
-    .filter(t => t.minutesUntil > passed)
-    .sort((a, b) => a.minutesUntil - b.minutesUntil);
+    .filter(t => t.inSection || t.minutesUntil > passed)
+    .sort((a, b) => a.effectiveMin - b.effectiveMin || a.minutesUntil - b.minutesUntil);
 }

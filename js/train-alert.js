@@ -78,6 +78,11 @@ export function stopWorkSession() {
 export async function checkBySchedule() {
   if (!workSessionActive) return;
   const trains = getActiveTrains();
+
+  // ── HARD GATE: Never alert for trains beyond 120 min ──────────────────
+  // This prevents stale/wrapped trains from firing phantom alerts.
+  const ALERT_HORIZON_MIN = 120;
+
   if (onTrainsUpdate) onTrainsUpdate(trains);
 
   // Determine alert mode
@@ -85,12 +90,20 @@ export async function checkBySchedule() {
   const alertMode = cfg("alert_mode") || "station";
 
   for (const train of trains) {
-    // In station mode, use work section timing for alerts
+    // Train INSIDE the work section → always CRITICAL, always alert
+    if (train.inSection) {
+      escalateAlert(train.no, "CRITICAL", train, "schedule",
+        `INSIDE SKM↔UPD section — clear the track`);
+      continue;
+    }
+
+    // Skip trains beyond the alert horizon — they are NOT a danger right now
     const effectiveMin = alertMode === "station"
       ? (train.minutesToWork ?? train.minutesUntil)
       : train.minutesUntil;
+    if (effectiveMin > ALERT_HORIZON_MIN) continue;
 
-    const level = getAlertLevel(effectiveMin);
+    const level = train.alertLevel;
     if (level === "OK" || level === "PASSED") continue;
 
     const detail = alertMode === "station"
@@ -115,7 +128,16 @@ export async function fetchLivePositions() {
   const trains = getActiveTrains().filter(t => t.alertLevel !== "PASSED").slice(0, 8);
   const fetches = trains.map(async (train) => {
     const cached = getCachedPosition(train.no);
-    if (cached) return; // Use cached
+    if (cached) {
+      // Rehydrate cached position (90s TTL) into the live map
+      livePositions.set(train.no, {
+        kmFromMAS: cached.position,
+        speed: train.speed,
+        direction: train.dir,
+        fetchedAt: cached.timestamp
+      });
+      return;
+    }
 
     const liveData = await fetchLiveTrainStatus(train.no, railRadarKey);
     if (!liveData) return;
@@ -148,6 +170,19 @@ export async function checkByLiveGPS() {
   let nearestTrain  = null;
 
   for (const train of trains) {
+    // ── SAFETY FIRST: train INSIDE the work section ─────────────────────────
+    // No GPS calculation needed — if it's in the section, alert immediately.
+    if (train.inSection) {
+      escalateAlert(train.no, "CRITICAL", train, "live",
+        "INSIDE SKM↔UPD section — clear the track");
+      // Also count as nearest (0 km) for the distance panel
+      if (nearestDistKm > 0) {
+        nearestDistKm = 0;
+        nearestTrain  = { ...train, distKm: 0 };
+      }
+      continue;
+    }
+
     const livePos = livePositions.get(train.no);
     let trainKmFromMAS;
 

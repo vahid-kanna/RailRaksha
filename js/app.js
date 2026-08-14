@@ -203,11 +203,19 @@ function flashSessionBtn(level) {
   }
 }
 
+// ── Display horizon: how far ahead to SHOW trains in the list ─────────────────
+// Trains beyond this are irrelevant right now — they caused the "985 min" clutter.
+const DISPLAY_HORIZON_MIN = 120; // 2 hours ahead max
+
 function renderTrainList(trains) {
   const list = document.getElementById("train-list");
   if (!list) return;
 
-  const nearest = trains[0];
+  // Split: trains worth showing now vs far-future trains (tomorrow's wrap etc.)
+  const relevant   = trains.filter(t => t.inSection || t.effectiveMin <= DISPLAY_HORIZON_MIN);
+  const laterCount = trains.length - relevant.length;
+
+  const nearest = relevant[0];
   const level   = nearest?.alertLevel || "OK";
   updateStatusHero(level, nearest);
 
@@ -226,11 +234,25 @@ function renderTrainList(trains) {
       <div class="es-sub">All scheduled trains have passed. Resume carefully.</div></div>`;
     return;
   }
-  trains.slice(0, 12).forEach((train, i) => {
+  if (relevant.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="es-icon">✅</div>
+      <div class="es-title">No trains in the next 2 hours</div>
+      <div class="es-sub">Next train is ${laterCount > 0 ? "more than 2 hours away" : "not scheduled soon"}. Maintain vigilance.</div></div>`;
+    return;
+  }
+  relevant.slice(0, 12).forEach((train, i) => {
     const card = createTrainCard(train);
     card.style.animationDelay = `${i * 0.04}s`;
     list.appendChild(card);
   });
+
+  // Collapse far-future trains into one quiet line
+  if (laterCount > 0) {
+    const footer = document.createElement("div");
+    footer.style.cssText = "text-align:center;font-size:11px;color:var(--text-sub);padding:10px 0;opacity:0.7;";
+    footer.textContent = `+ ${laterCount} more train${laterCount > 1 ? "s" : ""} later today`;
+    list.appendChild(footer);
+  }
 }
 
 function renderLiveDistance(data) {
@@ -259,9 +281,15 @@ function renderLiveDistance(data) {
   const isLive = !!localStorage.getItem("railradar_key");
 
   if (alertMode === "station") {
-    const workMin = train.minutesToWork ?? train.minutesUntil;
-    distEl.textContent = workMin <= 0 ? "IN SECTION!" : `${workMin} min to section`;
-    nameEl.textContent = `${train.name} (#${train.no}) · ${train.nearStation || ""} · ${train.dir === "D" ? "↓ GDR" : "↑ BZA"}`;
+    if (train.inSection) {
+      distEl.textContent = "IN SECTION!";
+      distEl.className   = "ldp-value dist-crit";
+    } else {
+      const workMin = train.minutesToWork ?? train.minutesUntil;
+      distEl.textContent = workMin <= 0 ? "IN SECTION!" : `${workMin} min to section`;
+      distEl.className   = workMin <= 4 ? "ldp-value dist-crit" : workMin <= 8 ? "ldp-value dist-warn" : "ldp-value dist-prepare";
+    }
+    nameEl.textContent  = `${train.name} (#${train.no}) · ${train.nearStation || ""} · ${train.dir === "D" ? "↓ GDR" : "↑ BZA"}`;
     badgeEl.textContent = isLive ? "LIVE+STATION" : "STATION";
     badgeEl.className   = `ldp-badge ${isLive ? "live" : "sched"}`;
   } else {
@@ -286,6 +314,14 @@ function renderLiveDistance(data) {
 function updateStatusHero(level, nearestTrain) {
   const hero = document.getElementById("track-status-hero");
   if (!hero) return;
+
+  // If the nearest relevant train is beyond 120 min, show TRACK CLEAR instead
+  const effectiveMin = nearestTrain?.effectiveMin ?? Infinity;
+  if (!nearestTrain?.inSection && effectiveMin > DISPLAY_HORIZON_MIN) {
+    level = "OK";
+    nearestTrain = null;
+  }
+
   hero.className = `track-status-hero status-${
     level === "OK" ? "clear" : level === "CRITICAL" ? "danger" : "caution"}`;
 
@@ -318,9 +354,15 @@ function createTrainCard(train) {
   const workEta = train.minutesToWork !== undefined ? train.minutesToWork : train.minutesUntil;
   const etaLabel = alertMode === "station" ? "to section" : "to SKM";
 
-  const etaDisplay = train.minutesUntil <= 0
-    ? `<span class="time-to-arrival" style="font-size:13px;">PASSED</span>`
-    : `<span class="time-to-arrival">${alertMode === "station" ? Math.max(0, workEta) : train.minutesUntil}</span><div class="time-unit">min ${etaLabel}</div>`;
+  let etaDisplay;
+  if (train.inSection) {
+    etaDisplay = `<span class="time-to-arrival" style="font-size:15px;color:#ef4444;font-weight:900;">IN SECTION</span>`;
+  } else if (train.minutesUntil <= 0) {
+    etaDisplay = `<span class="time-to-arrival" style="font-size:13px;">PASSED</span>`;
+  } else {
+    const displayMin = alertMode === "station" ? Math.max(0, workEta) : train.minutesUntil;
+    etaDisplay = `<span class="time-to-arrival">${displayMin}</span><div class="time-unit">min ${etaLabel}</div>`;
+  }
 
   // Non-stopping trains are most dangerous — show warning badge
   const stopBadge = train.stops === false
@@ -351,8 +393,11 @@ function createTrainCard(train) {
 function showEmergencyBanner(train, level) {
   const banner = document.getElementById("emergency-banner");
   if (!banner) return;
+  const alertMode = getConfig("alert_mode") || "station";
+  const etaMin = train?.inSection ? null : (alertMode === "station" ? (train?.minutesToWork ?? train?.minutesUntil) : train?.minutesUntil);
+  const etaText = etaMin === null ? "IN SECTION" : `${etaMin} min`;
   const msgs = {
-    PREPARE:  { icon: "⚠️", title: `Train approaching — ${train?.minutesUntil} min`, sub: `${train?.name} — Prepare to clear track` },
+    PREPARE:  { icon: "⚠️", title: `Train approaching — ${etaText}`, sub: `${train?.name} — Prepare to clear track` },
     WARN:     { icon: "🟠", title: `ALERT — Move off track!`, sub: `${train?.name} — Tools off track NOW!` },
     CRITICAL: { icon: "🚨", title: "CLEAR TRACK NOW!", sub: `${train?.name} — ALL WORKERS OFF TRACK!` }
   }[level] || {};

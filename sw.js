@@ -2,15 +2,24 @@
  * RailRaksha — Service Worker
  * Offline-first caching for all app assets.
  * Background sync for defect reports when online.
+ *
+ * Strategy: Stale-While-Revalidate for JS/CSS/HTML (serves cached instantly,
+ * then updates cache from network in the background so the NEXT load is fresh).
+ * Cache-first for static assets (icons, manifest).
  */
 
-const CACHE_NAME = "railraksha-v2.5";
+const CACHE_NAME = "railraksha-v2.7";
+
 const SHELL_ASSETS = [
   "/",
   "/index.html",
   "/css/style.css",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
+  "/manifest.json"
+];
+
+const DYNAMIC_ASSETS = [
   "/js/app.js",
   "/js/config.js",
   "/js/config-keys.js",
@@ -22,15 +31,17 @@ const SHELL_ASSETS = [
   "/js/gang-diary.js",
   "/js/weather-alert.js",
   "/js/pw-manual.js",
-  "/js/db.js",
-  "/manifest.json"
+  "/js/db.js"
 ];
 
-// Install — cache all shell assets
+// Install — cache all assets
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_ASSETS))
+    caches.open(CACHE_NAME).then(cache =>
+      cache.addAll([...SHELL_ASSETS, ...DYNAMIC_ASSETS])
+    )
   );
+  // Force activate immediately so old cache is purged
   self.skipWaiting();
 });
 
@@ -44,7 +55,7 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Fetch — serve from cache first, network fallback
+// Fetch strategy
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
@@ -54,7 +65,30 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Cache-first for app shell
+  const isDynamic = DYNAMIC_ASSETS.some(a => url.pathname.endsWith(a.replace("/js/", "/js/")));
+  const isHTML    = url.pathname === "/" || url.pathname.endsWith("/index.html");
+
+  // ── Stale-While-Revalidate for JS/CSS/HTML ──────────────────────────────
+  // Serve cached version immediately (instant load), but also fetch from
+  // network and update the cache so the NEXT page load gets the fresh version.
+  if (isDynamic || isHTML) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(e.request).then(cached => {
+          const networkPromise = fetch(e.request).then(response => {
+            if (response.ok) cache.put(e.request, response.clone());
+            return response;
+          }).catch(() => cached);
+
+          // Return cached immediately if available, otherwise wait for network
+          return cached || networkPromise;
+        })
+      )
+    );
+    return;
+  }
+
+  // ── Cache-first for static assets (icons, manifest) ──────────────────────
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
@@ -65,7 +99,6 @@ self.addEventListener("fetch", (e) => {
         }
         return response;
       }).catch(() => {
-        // Return index.html for navigation requests (SPA fallback)
         if (e.request.mode === "navigate") {
           return caches.match("/index.html");
         }
@@ -90,7 +123,6 @@ async function syncDefectReports() {
     const reports = await getAllPendingReports(db);
     if (reports.length === 0) return;
 
-    // Get API endpoint from client (passed via postMessage)
     const endpoint = await getSyncEndpoint();
 
     for (const report of reports) {
@@ -106,7 +138,6 @@ async function syncDefectReports() {
         }
       } catch (err) {
         console.warn("[RailRaksha SW] Failed to sync report:", report.id, err);
-        // Will retry on next sync
       }
     }
   } catch (err) {
@@ -164,8 +195,6 @@ function markReportSynced(db, id) {
 
 function getSyncEndpoint() {
   return new Promise((resolve) => {
-    // In a real app, this would come from a config shared with the main thread
-    // For now, use a reasonable default or skip if not configured
-    resolve("/api/defect-reports"); // Relative to origin
+    resolve("/api/defect-reports");
   });
 }

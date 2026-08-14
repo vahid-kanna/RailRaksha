@@ -85,8 +85,8 @@ export function getConfigNum(key) {
  */
 export function applyDefaultsOnce() {
   // One-time migration: v2.0 changed default AI provider from Gemini to Bynara/Mistral
-  const configVersion = localStorage.getItem("_config_version");
-  if (configVersion !== "2.0") {
+  let configVersion = localStorage.getItem("_config_version");
+  if (configVersion !== "2.0" && configVersion !== "2.1") {
     // Force-update AI settings if they were the old Gemini defaults
     const oldKey = localStorage.getItem("ai_api_key");
     const oldProvider = localStorage.getItem("ai_provider");
@@ -96,7 +96,6 @@ export function applyDefaultsOnce() {
       localStorage.setItem("ai_base_url",  DEFAULT_CONFIG.ai_base_url);
       localStorage.setItem("ai_api_key",   DEFAULT_CONFIG.ai_api_key);
     }
-    localStorage.setItem("_config_version", "2.0");
   }
 
   for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
@@ -106,7 +105,7 @@ export function applyDefaultsOnce() {
   }
 
   // Migration: v2.1 added separate image AI provider (Gemini) for vision tasks
-  const configVersion = localStorage.getItem("_config_version");
+  configVersion = localStorage.getItem("_config_version");
   if (configVersion !== "2.1") {
     if (!localStorage.getItem("image_ai_provider")) {
       localStorage.setItem("image_ai_provider", DEFAULT_CONFIG.image_ai_provider);

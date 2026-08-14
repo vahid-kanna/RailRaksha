@@ -104,9 +104,9 @@ async function callGeminiAPI({ apiKey, model, prompt, imageBase64, mimeType }) {
   }
 
   const data = await response.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const rawText = parts[0]?.text || "";
-  if (!rawText && !parts.some(p => p.text)) {
+  const parts_resp = data.candidates?.[0]?.content?.parts || [];
+  const rawText = parts_resp[0]?.text || "";
+  if (!rawText && !parts_resp.some(p => p.text)) {
     throw new Error("Gemini returned empty response (thinking may have consumed token budget). Try again.");
   }
   return parseJSONOrText(rawText);
