@@ -166,6 +166,12 @@ export async function checkByLiveGPS() {
   const workerKmFromMAS = gpsToKmFromMAS(workerGPS.lat, workerGPS.lon);
 
   const trains = getActiveTrains().filter(t => t.alertLevel !== "PASSED");
+
+  // ── HARD GATE: skip trains beyond 120 min (same as checkBySchedule) ──
+  // Prevents far-future/wrapped trains from producing phantom distances and
+  // false "approaching" alerts when no live GPS data exists for them.
+  const ALERT_HORIZON_MIN = 120;
+
   let nearestDistKm = Infinity;
   let nearestTrain  = null;
 
@@ -189,8 +195,11 @@ export async function checkByLiveGPS() {
     if (livePos) {
       trainKmFromMAS = livePos.kmFromMAS;
     } else {
-      // No live data — estimate from schedule
+      // No live data — estimate from schedule, but ONLY if within horizon.
+      // Far-future trains produce nonsense km estimates (hundreds of km away),
+      // which the schedule path should have already excluded.
       const minUntil = train.minutesUntil;
+      if (minUntil > ALERT_HORIZON_MIN) continue; // skip far trains
       const kmTraveled = (minUntil / 60) * train.speed;
       // DOWN train: has NOT reached SKM yet → it's north of SKM (higher km)
       // UP train:   has NOT reached SKM yet → it's south of SKM (lower km)

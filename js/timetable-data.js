@@ -283,14 +283,17 @@ export function getActiveTrains() {
       // For DOWN trains: entered at SKM → minUntil <= 0 and hasn't reached UPD
       // For UP trains: entered at UPD → minutesToWork <= 0 and hasn't reached SKM
       //
-      // Without GPS, we use a generous "late buffer" (LATENCY_MIN = 15 min)
-      // to account for typical delays. If minutesToWork is only slightly negative
-      // (< 15 min), the train is likely just running late, not in the section.
-      const LATENCY_BUFFER_MIN = 15; // Account for train delays
+      // Without GPS, use a "late buffer" (ENTRY_BUFFER_MIN) to account for
+      // typical delays. A train is only flagged IN SECTION once it is
+      // clearly past the section entry edge by ENTRY_BUFFER_MIN, so a merely
+      // late train (still approaching the boundary) is NOT falsely flagged.
+      const ENTRY_BUFFER_MIN = 15; // Account for train delays (~15 min)
 
+      // DOWN: enters at SKM (minUntil=0), exits at UPD (minUntil=-transitMin)
+      // UP:   enters at UPD (minutesToWork=0), exits at SKM (minUntil=0)
       const scheduleInSection = t.dir === "D"
-        ? (minUntil <= -LATENCY_BUFFER_MIN && minUntil > -(transitMin + LATENCY_BUFFER_MIN))
-        : (minutesToWork <= -LATENCY_BUFFER_MIN && minUntil > 0);
+        ? (minUntil <= -ENTRY_BUFFER_MIN && minUntil > -transitMin)
+        : (minutesToWork <= -ENTRY_BUFFER_MIN && minUntil > 0);
 
       // Only trust scheduleInSection if we DON'T have live GPS.
       // When GPS is available, live-trains.js handles inSection via actual position.
