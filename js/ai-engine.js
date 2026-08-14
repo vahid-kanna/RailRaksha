@@ -42,11 +42,17 @@ async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBa
     cleanBaseUrl += "/chat/completions";
   }
 
+  // Use serverless proxy when in browser (avoids CORS issues)
+  // The proxy at /api/chat forwards to Bynara with server-side API key
+  const useProxy = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel');
+  const fetchUrl = useProxy ? '/api/chat' : cleanBaseUrl;
+
   const activeModel = model || "mistral-medium-3-5";
-  console.log(`Calling AI API | Model: ${activeModel} | Image: ${!!imageBase64} | URL: ${cleanBaseUrl}`);
+  console.log(`Calling AI API | Model: ${activeModel} | Image: ${!!imageBase64} | URL: ${fetchUrl} ${useProxy ? '(via proxy)' : ''}`);
 
   const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  // Only send Authorization header when NOT using proxy (proxy uses server-side key)
+  if (apiKey && !useProxy) headers["Authorization"] = `Bearer ${apiKey}`;
 
   // Vision: user content becomes [text, image_url] parts (OpenAI-compatible format)
   const userContent = imageBase64
@@ -71,7 +77,7 @@ async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBa
     max_tokens: 4096
   };
 
-  const response = await fetch(cleanBaseUrl, {
+  const response = await fetch(fetchUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(requestBody),
