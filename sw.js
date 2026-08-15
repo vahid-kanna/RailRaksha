@@ -8,31 +8,32 @@
  * Cache-first for static assets (icons, manifest).
  */
 
-const CACHE_NAME = 'railraksha-v3.4';
+const CACHE_NAME = 'railraksha-v4.0';
 
 const SHELL_ASSETS = [
-  "/",
-  "/index.html",
-  "/css/style.css",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/manifest.json"
+  "./",
+  "./index.html",
+  "./css/style.css",
+  "./icons/logo.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./manifest.json"
 ];
 
 const DYNAMIC_ASSETS = [
-  "/js/app.js",
-  "/js/config.js",
-  "/js/config-keys.js",
-  "/js/ai-engine.js",
-  "/js/train-alert.js",
-  "/js/live-trains.js",
-  "/js/timetable-data.js",
-  "/js/defect-report.js",
-  "/js/gang-diary.js",
-  "/js/weather-alert.js",
-  "/js/pw-manual.js",
-  "/js/db.js",
-  "/js/icons.js"
+  "./js/app.js",
+  "./js/config.js",
+  "./js/config-keys.js",
+  "./js/ai-engine.js",
+  "./js/train-alert.js",
+  "./js/live-trains.js",
+  "./js/timetable-data.js",
+  "./js/defect-report.js",
+  "./js/gang-diary.js",
+  "./js/weather-alert.js",
+  "./js/pw-manual.js",
+  "./js/db.js",
+  "./js/icons.js"
 ];
 
 // Install — cache all assets

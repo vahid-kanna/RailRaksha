@@ -41,13 +41,47 @@ export function initDefectReport(els) {
 function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
-  capturedImageMime = file.type || "image/jpeg";
+  capturedImageMime = "image/jpeg";
   const reader = new FileReader();
   reader.onload = (ev) => {
-    capturedImageBase64 = ev.target.result.split(",")[1]; // strip data:xxx;base64,
-    displayPreview(ev.target.result);
+    const rawDataUrl = ev.target.result;
+    compressImage(rawDataUrl, 1280, 0.8, (compressedDataUrl) => {
+      capturedImageBase64 = compressedDataUrl.split(",")[1];
+      displayPreview(compressedDataUrl);
+    });
   };
   reader.readAsDataURL(file);
+}
+
+function compressImage(dataUrl, maxDimension, quality, callback) {
+  const img = new Image();
+  img.onload = () => {
+    let width = img.width;
+    let height = img.height;
+
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = Math.round((height * maxDimension) / width);
+        width = maxDimension;
+      } else {
+        width = Math.round((width * maxDimension) / height);
+        height = maxDimension;
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const compressed = canvas.toDataURL("image/jpeg", quality);
+    callback(compressed);
+  };
+  img.onerror = () => {
+    callback(dataUrl);
+  };
+  img.src = dataUrl;
 }
 
 function displayPreview(dataUrl) {

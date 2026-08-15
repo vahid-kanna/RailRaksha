@@ -28,59 +28,59 @@ export const SKM_TIMETABLE = [
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Circar Express ──
-  { no: "17644", name: "Circar Express",         from: "KAKINADA PORT",     to: "CHENGALPATTU",    dir: "U", time: "00:45", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
-  { no: "17643", name: "Circar Express",         from: "CHENGALPATTU",      to: "KAKINADA PORT",   dir: "D", time: "21:55", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
+  { no: "17644", name: "Circar Express",         from: "KAKINADA PORT",     to: "CHENGALPATTU",    dir: "D", time: "00:45", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
+  { no: "17643", name: "Circar Express",         from: "CHENGALPATTU",      to: "KAKINADA PORT",   dir: "U", time: "21:55", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
 
   // ── Charlapalli Express ──
-  { no: "12604", name: "Charlapalli-MAS Express", from: "CHARLAPALLI",      to: "CHENNAI CENTRAL", dir: "U", time: "01:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-  { no: "12603", name: "MAS-Charlapalli Express", from: "CHENNAI CENTRAL",  to: "CHARLAPALLI",     dir: "D", time: "20:35", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
+  { no: "12604", name: "Charlapalli-MAS Express", from: "CHARLAPALLI",      to: "CHENNAI CENTRAL", dir: "D", time: "01:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
+  { no: "12603", name: "MAS-Charlapalli Express", from: "CHENNAI CENTRAL",  to: "CHARLAPALLI",     dir: "U", time: "20:35", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
 
   // ── Seshadri Express ──
-  { no: "17210", name: "Seshadri Express",       from: "KAKINADA TOWN",     to: "BENGALURU",       dir: "U", time: "01:15", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
-  { no: "17209", name: "Seshadri Express",       from: "BENGALURU",         to: "KAKINADA TOWN",   dir: "D", time: "21:20", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
+  { no: "17210", name: "Seshadri Express",       from: "KAKINADA TOWN",     to: "BENGALURU",       dir: "D", time: "01:15", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
+  { no: "17209", name: "Seshadri Express",       from: "BENGALURU",         to: "KAKINADA TOWN",   dir: "U", time: "21:20", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
 
   // ── Narayanadri Express ──
-  { no: "12734", name: "Narayanadri Express",    from: "LINGAMPALLI",       to: "TIRUPATI",        dir: "U", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
-  { no: "12733", name: "Narayanadri Express",    from: "TIRUPATI",          to: "LINGAMPALLI",     dir: "D", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
+  { no: "12734", name: "Narayanadri Express",    from: "LINGAMPALLI",       to: "TIRUPATI",        dir: "D", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
+  { no: "12733", name: "Narayanadri Express",    from: "TIRUPATI",          to: "LINGAMPALLI",     dir: "U", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
 
   // ── Andaman Express ──
-  { no: "16032", name: "Andaman Express",        from: "SVDK KATRA",        to: "CHENNAI CENTRAL", dir: "U", time: "01:55", days: "Tue,Wed,Sat",         type: "EXPRESS",    speed: 52, stops: true },
-  { no: "16031", name: "Andaman Express",        from: "CHENNAI CENTRAL",   to: "SVDK KATRA",      dir: "D", time: "09:30", days: "Wed,Thu,Fri,Sun",     type: "EXPRESS",    speed: 52, stops: true },
+  { no: "16032", name: "Andaman Express",        from: "SVDK KATRA",        to: "CHENNAI CENTRAL", dir: "D", time: "01:55", days: "Tue,Wed,Sat",         type: "EXPRESS",    speed: 52, stops: true },
+  { no: "16031", name: "Andaman Express",        from: "CHENNAI CENTRAL",   to: "SVDK KATRA",      dir: "U", time: "09:30", days: "Wed,Thu,Fri,Sun",     type: "EXPRESS",    speed: 52, stops: true },
 
   // ── Dhanbad-Alappuzha Express ──
   { no: "13352", name: "Alappuzha-Dhanbad Exp",  from: "ALAPPUZHA",         to: "DHANBAD",         dir: "U", time: "02:00", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
   { no: "13351", name: "Dhanbad-Alappuzha Exp",  from: "DHANBAD",           to: "ALAPPUZHA",       dir: "D", time: "18:35", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
 
   // ── Sabari Express ──
-  { no: "17229", name: "Sabari Express",         from: "TRIVANDRUM",        to: "SECUNDERABAD",    dir: "D", time: "03:25", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
-  { no: "17230", name: "Sabari Express",         from: "SECUNDERABAD",      to: "TRIVANDRUM",      dir: "U", time: "19:45", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
+  { no: "17229", name: "Sabari Express",         from: "TRIVANDRUM",        to: "SECUNDERABAD",    dir: "U", time: "03:25", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
+  { no: "17230", name: "Sabari Express",         from: "SECUNDERABAD",      to: "TRIVANDRUM",      dir: "D", time: "19:45", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
 
   // ── Bitragunta MEMU ──
   { no: "07760", name: "Bitragunta-BZA MEMU",    from: "BITRAGUNTA",        to: "VIJAYAWADA",      dir: "U", time: "04:40", days: "daily",               type: "PASSENGER",  speed: 38, stops: true },
   { no: "07759", name: "BZA-Bitragunta MEMU",    from: "VIJAYAWADA",        to: "BITRAGUNTA",      dir: "D", time: "18:00", days: "daily",               type: "PASSENGER",  speed: 38, stops: true },
 
   // ── Simhapuri Express ──
-  { no: "12710", name: "Simhapuri Express",      from: "SECUNDERABAD",      to: "GUDUR",           dir: "U", time: "06:30", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-  { no: "12709", name: "Simhapuri Express",      from: "GUDUR",             to: "SECUNDERABAD",    dir: "D", time: "20:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
+  { no: "12710", name: "Simhapuri Express",      from: "SECUNDERABAD",      to: "GUDUR",           dir: "D", time: "06:30", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
+  { no: "12709", name: "Simhapuri Express",      from: "GUDUR",             to: "SECUNDERABAD",    dir: "U", time: "20:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
 
   // ── Tirumala Express ──
-  { no: "17488", name: "Tirumala Express",       from: "VISAKHAPATNAM",     to: "TIRUPATI",        dir: "U", time: "07:33", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
-  { no: "17487", name: "Tirumala Express",       from: "TIRUPATI",          to: "VISAKHAPATNAM",   dir: "D", time: "23:50", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
+  { no: "17488", name: "Tirumala Express",       from: "VISAKHAPATNAM",     to: "TIRUPATI",        dir: "D", time: "07:33", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
+  { no: "17487", name: "Tirumala Express",       from: "TIRUPATI",          to: "VISAKHAPATNAM",   dir: "U", time: "23:50", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
 
   // ── Pinakini Express ──
   { no: "12711", name: "Pinakini Express",       from: "VIJAYAWADA",        to: "CHENNAI CENTRAL", dir: "D", time: "08:35", days: "daily",               type: "EXPRESS",    speed: 62, stops: true },
   { no: "12712", name: "Pinakini Express",       from: "CHENNAI CENTRAL",   to: "VIJAYAWADA",      dir: "U", time: "18:15", days: "daily",               type: "EXPRESS",    speed: 62, stops: true },
 
   // ── Krishna Express ──
-  { no: "17405", name: "Krishna Express",        from: "TIRUPATI",          to: "ADILABAD",        dir: "D", time: "09:15", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
-  { no: "17406", name: "Krishna Express",        from: "ADILABAD",          to: "TIRUPATI",        dir: "U", time: "16:20", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
+  { no: "17405", name: "Krishna Express",        from: "TIRUPATI",          to: "ADILABAD",        dir: "U", time: "09:15", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
+  { no: "17406", name: "Krishna Express",        from: "ADILABAD",          to: "TIRUPATI",        dir: "D", time: "16:20", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
 
   // ── Puri-Tirupati Express ──
   { no: "17479", name: "Puri-Tirupati Express",  from: "PURI",              to: "TIRUPATI",        dir: "D", time: "15:10", days: "Mon,Wed,Thu,Fri,Sat", type: "EXPRESS",    speed: 48, stops: true },
   { no: "17480", name: "Tirupati-Puri Express",  from: "TIRUPATI",          to: "PURI",            dir: "U", time: "14:40", days: "Mon,Tue,Wed,Fri,Sat", type: "EXPRESS",    speed: 48, stops: true },
 
   // ── Vijayawada-Gudur MEMU ──
-  { no: "07500", name: "BZA-Gudur MEMU",         from: "VIJAYAWADA",        to: "GUDUR",           dir: "U", time: "20:40", days: "daily",               type: "PASSENGER",  speed: 40, stops: true },
+  { no: "07500", name: "BZA-Gudur MEMU",         from: "VIJAYAWADA",        to: "GUDUR",           dir: "D", time: "20:40", days: "daily",               type: "PASSENGER",  speed: 40, stops: true },
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -89,12 +89,12 @@ export const SKM_TIMETABLE = [
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Vande Bharat Express (MAS-Narasapur) — FASTEST on this section ──
-  { no: "20677", name: "Vande Bharat Express",   from: "CHENNAI CENTRAL",   to: "NARASAPUR",       dir: "D", time: "09:22", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
-  { no: "20678", name: "Vande Bharat Express",   from: "NARASAPUR",         to: "CHENNAI CENTRAL", dir: "U", time: "18:52", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
+  { no: "20677", name: "Vande Bharat Express",   from: "CHENNAI CENTRAL",   to: "NARASAPUR",       dir: "U", time: "09:22", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
+  { no: "20678", name: "Vande Bharat Express",   from: "NARASAPUR",         to: "CHENNAI CENTRAL", dir: "D", time: "18:52", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
 
   // ── Jan Shatabdi (MAS-BZA) ──
-  { no: "12077", name: "Chennai Jan Shatabdi",   from: "CHENNAI CENTRAL",   to: "VIJAYAWADA",      dir: "D", time: "10:45", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
-  { no: "12078", name: "BZA Jan Shatabdi",       from: "VIJAYAWADA",        to: "CHENNAI CENTRAL", dir: "U", time: "18:15", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
+  { no: "12077", name: "Chennai Jan Shatabdi",   from: "CHENNAI CENTRAL",   to: "VIJAYAWADA",      dir: "U", time: "10:45", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
+  { no: "12078", name: "BZA Jan Shatabdi",       from: "VIJAYAWADA",        to: "CHENNAI CENTRAL", dir: "D", time: "18:15", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
 
   // ── Howrah-Chennai Mail ──
   { no: "12839", name: "Howrah-Chennai Mail",    from: "HOWRAH",            to: "CHENNAI CENTRAL", dir: "D", time: "12:30", days: "daily",               type: "MAIL",       speed: 110, stops: false },
@@ -109,24 +109,24 @@ export const SKM_TIMETABLE = [
   { no: "12842", name: "Coromandel Express",     from: "CHENNAI CENTRAL",   to: "HOWRAH",          dir: "U", time: "10:30", days: "daily",               type: "EXPRESS",    speed: 120, stops: false },
 
   // ── Padmavathi Express ──
-  { no: "12763", name: "Padmavathi Express",     from: "TIRUPATI",          to: "SECUNDERABAD",    dir: "D", time: "19:15", days: "Mon,Tue,Thu,Fri,Sun", type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12764", name: "Padmavathi Express",     from: "SECUNDERABAD",      to: "TIRUPATI",        dir: "U", time: "03:30", days: "Mon,Tue,Wed,Fri,Sat", type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12763", name: "Padmavathi Express",     from: "TIRUPATI",          to: "SECUNDERABAD",    dir: "U", time: "19:15", days: "Mon,Tue,Thu,Fri,Sun", type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12764", name: "Padmavathi Express",     from: "SECUNDERABAD",      to: "TIRUPATI",        dir: "D", time: "03:30", days: "Mon,Tue,Wed,Fri,Sat", type: "EXPRESS",    speed: 100, stops: false },
 
   // ── Howrah-Yesvantpur Express ──
   { no: "12863", name: "HWH-YPR Express",       from: "HOWRAH",            to: "YESVANTPUR",      dir: "D", time: "21:50", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
   { no: "12864", name: "YPR-HWH Express",       from: "YESVANTPUR",        to: "HOWRAH",          dir: "U", time: "20:00", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
 
   // ── Tamil Nadu Express ──
-  { no: "12621", name: "Tamil Nadu Express",     from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "D", time: "02:00", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
-  { no: "12622", name: "Tamil Nadu Express",     from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "U", time: "03:10", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
+  { no: "12621", name: "Tamil Nadu Express",     from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "U", time: "02:00", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
+  { no: "12622", name: "Tamil Nadu Express",     from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "D", time: "03:10", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
 
   // ── Grand Trunk Express ──
-  { no: "12615", name: "Grand Trunk Express",    from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "D", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12616", name: "Grand Trunk Express",    from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "U", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12615", name: "Grand Trunk Express",    from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "U", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12616", name: "Grand Trunk Express",    from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "D", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
 
   // ── Charminar Express ──
-  { no: "12759", name: "Charminar Express",      from: "TAMBARAM",          to: "HYDERABAD",       dir: "D", time: "21:10", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12760", name: "Charminar Express",      from: "HYDERABAD",         to: "TAMBARAM",        dir: "U", time: "03:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12759", name: "Charminar Express",      from: "TAMBARAM",          to: "HYDERABAD",       dir: "U", time: "21:10", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
+  { no: "12760", name: "Charminar Express",      from: "HYDERABAD",         to: "TAMBARAM",        dir: "D", time: "03:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -297,7 +297,7 @@ export function getActiveTrains() {
 
       // Only trust scheduleInSection if we DON'T have live GPS.
       // When GPS is available, live-trains.js handles inSection via actual position.
-      const hasLiveGPS = !!localStorage.getItem("railradar_key");
+      const hasLiveGPS = typeof localStorage !== "undefined" && !!localStorage.getItem("railradar_key");
       const inSection = hasLiveGPS ? false : scheduleInSection;
 
       // Effective minutes for alerting (0 = inside section = CRITICAL)

@@ -218,13 +218,13 @@ function showOfflineWeather() {
 
   if (elements.weatherIcon) elements.weatherIcon.innerHTML = isMonsoon ? Icons.rain(28, '#06B6D4') : isSummer ? Icons.sun(28, '#F59E0B') : Icons.cloud(28, '#94A3B8');
   if (elements.weatherTemp) elements.weatherTemp.textContent = isSummer ? "38°C" : isMonsoon ? "28°C" : "30°C";
-  if (elements.weatherDesc) elements.weatherDesc.textContent = isMonsoon ? "Monsoon Season — Set OWM key for live data" : "Add OpenWeatherMap API key for live weather";
+  if (elements.weatherDesc) elements.weatherDesc.textContent = isMonsoon ? "Monsoon Season (Seasonal Norm)" : isSummer ? "Summer High Heat (Seasonal Norm)" : "Clear / Normal (Seasonal Norm)";
 
   const seasonRisks = isMonsoon
     ? [{ id:"monsoon",level:"medium",icon:Icons.rain(24, '#06B6D4'),title:"Monsoon Season Active",desc:"June–October: High risk period for Prakasam district. Cyclonic rainfall, bridge scour, embankment erosion.",action:"Daily inspection of Bridge 47 and low-lying sections. Clear drainage channels weekly.",irpwm:"IRPWM Para 2.11" }]
     : isSummer
     ? [{ id:"summer",level:"medium",icon:Icons.sun(24, '#F59E0B'),title:"Summer Hot Weather Patrolling",desc:"March–May: Rail temperatures can exceed 65°C. Sun kink risk on curves.",action:"Hot weather patrolling on curves km 233–235. Check rail joint expansion gaps.",irpwm:"IRPWM Para 2.9" }]
-    : [{ id:"ok",level:"low",icon:Icons.check(24, '#10B981'),title:"Normal Season",desc:"Standard maintenance conditions. Add OWM API key for live weather data.",action:"Continue regular gang patrol.",irpwm:"Standard patrol schedule" }];
+    : [{ id:"ok",level:"low",icon:Icons.check(24, '#10B981'),title:"Track Conditions — Normal",desc:"Standard maintenance conditions.",action:"Continue regular gang patrol.",irpwm:"Standard patrol schedule" }];
 
   renderRisks(seasonRisks);
   // Add pre-monsoon checklist reminder

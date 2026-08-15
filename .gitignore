@@ -20,3 +20,6 @@ js/config-keys.js
 
 # Logs
 *.log
+
+.vercel
+.env*

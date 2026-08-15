@@ -40,7 +40,7 @@ function updateDiaryHeader() {
 // ── Attendance ───────────────────────────────────────────────────────────────
 
 function updateAttendance() {
-  const total = parseInt(localStorage.getItem("gang_strength") || "22");
+  const total = parseInt(localStorage.getItem("gang_strength") || "25");
   const present = parseInt(elements.attendanceInput?.value || total);
   const absent = total - present;
   if (elements.attendanceCount) elements.attendanceCount.innerHTML = `${present}<span>/${total} workers</span>`;
@@ -158,7 +158,7 @@ async function generateDiaryEntry() {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
-  const total = parseInt(localStorage.getItem("gang_strength") || "22");
+  const total = parseInt(localStorage.getItem("gang_strength") || "25");
   const present = parseInt(elements.attendanceInput?.value || total);
   const gangNo = localStorage.getItem("gang_no") || "—";
   const mateName = localStorage.getItem("mate_name") || "—";

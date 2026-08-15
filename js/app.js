@@ -331,11 +331,11 @@ function updateStatusHero(level, nearestTrain) {
   const workMin = nearestTrain?.minutesToWork ?? nearestTrain?.minutesUntil;
 
   const cfg = {
-    OK:       { icon: Icons.check(32, '#10B981'), label: "TRACK CLEAR",      sub: isWorkSessionActive() ? `${modeLabel} · SKM↔UPD section clear` : "Start session to enable alerts" },
+    OK:       { icon: Icons.check(32, '#10B981'), label: "TRACK SAFE",        sub: isWorkSessionActive() ? `${modeLabel} · SKM↔UPD section clear` : "Start session to enable alerts" },
     PREPARE:  { icon: Icons.alert(32, '#F59E0B'), label: "TRAIN APPROACHING", sub: `${nearestTrain?.name} · ${workMin} min to section · ${nearestTrain?.nearStation || ""}` },
     WARN:     { icon: Icons.alertCircle(32, '#F97316'), label: "MOVE OFF TRACK",   sub: `${nearestTrain?.name} · ${workMin} min · Move all tools off track NOW` },
     CRITICAL: { icon: Icons.siren(32, '#EF4444'), label: "CLEAR TRACK NOW!", sub: `${nearestTrain?.name} · ALL WORKERS OFF TRACK IMMEDIATELY!` }
-  }[level] || { icon: Icons.check(32, '#10B981'), label: "TRACK CLEAR", sub: "" };
+  }[level] || { icon: Icons.check(32, '#10B981'), label: "TRACK SAFE", sub: "" };
 
   document.getElementById("status-icon").innerHTML    = cfg.icon;
   document.getElementById("status-label").textContent   = cfg.label;
@@ -449,9 +449,9 @@ function loadSettings() {
       // Use getConfig so pre-baked defaults appear even if localStorage is empty
       const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
       if (key === "ai_base_url") {
-        el.value = cfg(key) || "https://api.groq.com/openai/v1";
+        el.value = cfg(key) || "https://router.bynara.id/v1";
       } else if (key === "ai_model") {
-        el.value = cfg(key) || "qwen/qwen3.6-27b";
+        el.value = cfg(key) || "mistral-medium-3-5";
       } else if (key === "ai_provider") {
         el.value = cfg(key) || "openai_compatible";
       } else if (key === "alert_mode") {
@@ -534,8 +534,8 @@ function fillApiKeyFields() {
   const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
   
   document.getElementById("setting-ai_provider").value = cfg("ai_provider") || "openai_compatible";
-  document.getElementById("setting-ai_model").value = cfg("ai_model") || "qwen/qwen3.6-27b";
-  document.getElementById("setting-ai_base_url").value = cfg("ai_base_url") || "https://api.groq.com/openai/v1";
+  document.getElementById("setting-ai_model").value = cfg("ai_model") || "mistral-medium-3-5";
+  document.getElementById("setting-ai_base_url").value = cfg("ai_base_url") || "https://router.bynara.id/v1";
   document.getElementById("setting-ai_api_key").value = cfg("ai_api_key") || "";
   document.getElementById("setting-owm_api_key").value = cfg("owm_api_key") || "";
   document.getElementById("setting-railradar_key").value = cfg("railradar_key") || "";

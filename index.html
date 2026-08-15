@@ -20,7 +20,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- CSP Meta Tag -->
   <meta http-equiv="Content-Security-Policy" content="
@@ -203,12 +203,10 @@
   <!-- ── Header ──────────────────────────────────── -->
   <header id="header">
     <div class="logo">
-      <div class="logo-icon">
-        <svg><use href="#icon-shield-check"/></svg>
-      </div>
+      <img src="icons/logo.png" class="logo-img" alt="RailRaksha" />
       <div class="logo-text">
         <div class="brand">RailRaksha</div>
-        <div class="sub" id="header-subtitle">SKM Section · VJA Division</div>
+        <div class="sub" id="header-subtitle">ALPHA · SKM SECTION</div>
       </div>
     </div>
     <div class="header-spacer"></div>
@@ -240,8 +238,11 @@
         </div>
       </div>
 
-      <!-- Status Hero Card -->
+      <!-- Status Hero Card ([SEC-01]) -->
       <div id="track-status-hero" class="track-status-hero status-clear">
+        <div class="hud-corner hud-corner-tl"></div><div class="hud-corner hud-corner-tr"></div>
+        <div class="hud-corner hud-corner-bl"></div><div class="hud-corner hud-corner-br"></div>
+        <div class="module-badge" style="position:absolute;top:8px;left:12px;">[SEC-01] RADAR HUD</div>
         <div class="status-icon-ring">
           <span id="status-icon"><svg><use href="#icon-check-circle"/></svg></span>
         </div>
@@ -294,8 +295,7 @@
       <div class="freight-info-card">
         <span class="fi-icon"><svg><use href="#icon-truck"/></svg></span>
         <div class="fi-text">
-          <strong>Freight trains are not on NTES.</strong> Always maintain lookout.
-          Add a <strong style="color:#C4B5FD;">RailRadar API key</strong> in Settings for live GPS tracking of express trains (100% free).
+          <strong>Freight trains are not on NTES.</strong> Always maintain visual lookout on track.
         </div>
       </div>
 
@@ -463,7 +463,7 @@
 
       <!-- Voice Record Button -->
       <button id="btn-record" class="voice-record-btn">
-        <div class="mic-circle"><svg><use href="#icon-mic"/></svg></div>
+        <div class="mic-circle" id="mic-emoji"><svg><use href="#icon-mic"/></svg></div>
         <div class="voice-record-info">
           <div class="voice-title" id="voice-title">Tap to Record Today's Work</div>
           <div class="voice-sub" id="voice-sub">తెలుగులో మాట్లాడండి — Speak in Telugu</div>
@@ -595,14 +595,6 @@
         <div class="empty-state"><div class="es-icon"><svg style="width:44px;height:44px;color:var(--text-muted)"><use href="#icon-activity"/></svg></div><div class="es-title">Loading weather data...</div></div>
       </div>
 
-      <!-- OWM API Note -->
-      <div style="background:var(--bg-card);border-radius:var(--radius-md);padding:14px 16px;margin-top:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-          <svg style="width:14px;height:14px;display:inline;vertical-align:middle;color:var(--color-info)"><use href="#icon-info"/></svg>
-          Add a free <strong style="color:var(--text-secondary);">OpenWeatherMap API key</strong> in Settings for live weather data.
-          Visit <strong style="color:var(--color-warning);">openweathermap.org</strong> → Sign up free → Copy API key.
-        </div>
-      </div>
     </section>
 
 
@@ -728,12 +720,6 @@
         <svg style="width:14px;height:14px"><use href="#icon-train"/></svg>
         Alert Mode & Work Section
       </div>
-      <div style="background:var(--color-brand-soft);border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
-        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
-          <strong style="color:var(--color-brand);">Station Mode</strong> (default): Alerts fire when trains cross neighboring stations before your work section. Works 100% offline.<br/>
-          <strong style="color:var(--color-info);">GPS Mode</strong>: Alerts fire based on live GPS distance. Requires location permission. Falls back to Station Mode if GPS is unavailable.
-        </div>
-      </div>
       <div class="setting-item">
         <label for="setting-alert_mode">Alert Mode</label>
         <select id="setting-alert_mode" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text-primary);">
@@ -749,38 +735,24 @@
         <label for="setting-work_station_b">Work Section End (GDR side)</label>
         <input type="text" id="setting-work_station_b" placeholder="UPD" value="UPD" autocomplete="off" />
       </div>
-      <div style="background:var(--color-success-soft);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:10px 14px;margin-top:4px;">
-        <div style="font-size:11px;color:#6EE7B7;line-height:1.6;">
-          Your dad's gang works between <strong>Singarayakonda (SKM)</strong> and <strong>Ulavapadu (UPD)</strong> — ~28 km section.<br/>
-          Alerts trigger when trains cross <strong>Ongole/Ammanabrolu</strong> (from BZA side) or <strong>Kavali/Tanguturu</strong> (from GDR side) before entering this section.
-        </div>
-      </div>
     </div>
 
     <div class="setting-group">
       <div class="setting-group-label">
         <svg style="width:14px;height:14px"><use href="#icon-alert-triangle"/></svg>
-        Alert Distance Thresholds (km) — GPS Mode Only
-      </div>
-      <div style="background:var(--color-brand-soft);border:1px solid rgba(255,107,0,0.2);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
-        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
-          These only apply in <strong>GPS Mode</strong>. Set the distance at which each alert fires. Trains that have already passed are ignored automatically.
-        </div>
+        Alert Distance Thresholds (km) — GPS Mode
       </div>
       <div class="setting-item">
-        <label for="setting-alert_dist_critical">🔴 CRITICAL alert — Train within X km (default: 4 km)</label>
+        <label for="setting-alert_dist_critical">🔴 CRITICAL alert distance (km)</label>
         <input type="number" id="setting-alert_dist_critical" min="1" max="20" step="0.5" placeholder="4" autocomplete="off" />
-        <div style="font-size:10px;color:#ef9a9a;margin-top:2px;">ALL WORKERS CLEAR THE TRACK IMMEDIATELY</div>
       </div>
       <div class="setting-item">
-        <label for="setting-alert_dist_warn">🟠 WARNING alert — Train within X km (default: 8 km)</label>
+        <label for="setting-alert_dist_warn">🟠 WARNING alert distance (km)</label>
         <input type="number" id="setting-alert_dist_warn" min="2" max="30" step="0.5" placeholder="8" autocomplete="off" />
-        <div style="font-size:10px;color:#ffb74d;margin-top:2px;">Move all tools and equipment off the track now</div>
       </div>
       <div class="setting-item">
-        <label for="setting-alert_dist_prepare">🟡 PREPARE alert — Train within X km (default: 15 km)</label>
+        <label for="setting-alert_dist_prepare">🟡 PREPARE alert distance (km)</label>
         <input type="number" id="setting-alert_dist_prepare" min="5" max="50" step="1" placeholder="15" autocomplete="off" />
-        <div style="font-size:10px;color:#fff176;margin-top:2px;">Heads up — begin preparing to clear the track</div>
       </div>
     </div>
 
@@ -789,21 +761,16 @@
         <svg style="width:14px;height:14px"><use href="#icon-clock"/></svg>
         Schedule Alert Thresholds (minutes)
       </div>
-      <div style="background:var(--color-info-soft);border:1px solid rgba(6,182,212,0.2);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
-        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
-          When live GPS is unavailable, alerts fire based on scheduled passing time. Set how many minutes before the train reaches your section to be alerted.
-        </div>
-      </div>
       <div class="setting-item">
-        <label for="setting-alert_min_critical">🔴 CRITICAL — Alert X minutes before train (default: 7)</label>
+        <label for="setting-alert_min_critical">🔴 CRITICAL — Minutes before arrival</label>
         <input type="number" id="setting-alert_min_critical" min="1" max="20" step="1" placeholder="7" autocomplete="off" />
       </div>
       <div class="setting-item">
-        <label for="setting-alert_min_warn">🟠 WARNING — Alert X minutes before train (default: 15)</label>
+        <label for="setting-alert_min_warn">🟠 WARNING — Minutes before arrival</label>
         <input type="number" id="setting-alert_min_warn" min="5" max="40" step="1" placeholder="15" autocomplete="off" />
       </div>
       <div class="setting-item">
-        <label for="setting-alert_min_prepare">🟡 PREPARE — Alert X minutes before train (default: 25)</label>
+        <label for="setting-alert_min_prepare">🟡 PREPARE — Minutes before arrival</label>
         <input type="number" id="setting-alert_min_prepare" min="10" max="60" step="1" placeholder="25" autocomplete="off" />
       </div>
     </div>
@@ -814,18 +781,12 @@
         Weather & Tracking APIs
       </div>
       <div class="setting-item">
-        <label for="setting-owm_api_key">OpenWeatherMap API Key (for live weather)</label>
-        <input type="text" id="setting-owm_api_key" placeholder="Free at openweathermap.org" autocomplete="off" />
+        <label for="setting-owm_api_key">OpenWeatherMap API Key</label>
+        <input type="text" id="setting-owm_api_key" placeholder="Enter API Key" autocomplete="off" />
       </div>
       <div class="setting-item">
-        <label for="setting-railradar_key">RailRadar API Key — Live Train Tracking (FREE)</label>
-        <input type="text" id="setting-railradar_key" placeholder="Get free key at railradar.in/login" autocomplete="off" />
-      </div>
-      <div style="background:var(--color-success-soft);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:10px 14px;margin-top:4px;">
-        <div style="font-size:11px;color:#6EE7B7;line-height:1.6;">
-          <strong>Live GPS tracking</strong>: Sign up FREE at <a href="https://railradar.in/login" target="_blank" style="color:#A5D6A7;">railradar.in/login</a> → copy your API key → paste here.<br/>
-          Without this key, alerts still work using the offline timetable (100% safe). RailRadar is a free community-built Indian Railways API.
-        </div>
+        <label for="setting-railradar_key">RailRadar API Key</label>
+        <input type="text" id="setting-railradar_key" placeholder="Enter API Key" autocomplete="off" />
       </div>
     </div>
 
@@ -837,14 +798,14 @@
 
       <div class="setting-item" id="api-keys-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <label style="font-size:13px;font-weight:700;color:var(--text-secondary);">API Keys (Password Protected)</label>
+          <label style="font-size:13px;font-weight:700;color:var(--text-secondary);">API Keys (Protected)</label>
           <button type="button" id="btn-toggle-api-keys" class="btn-secondary" style="padding:6px 14px;font-size:12px;">Show Keys</button>
         </div>
 
         <div id="api-keys-locked" style="text-align:center;padding:20px;color:var(--text-muted);">
           <svg style="width:32px;height:32px;margin-bottom:8px;color:var(--text-muted)"><use href="#icon-shield"/></svg>
           <div style="font-weight:600;margin-bottom:4px;">API keys are hidden</div>
-          <div style="font-size:12px;">Tap "Show Keys" and enter password to view/edit</div>
+          <div style="font-size:12px;">Tap "Show Keys" to view or edit</div>
         </div>
 
         <div id="api-keys-unlocked" style="display:none;">
@@ -862,32 +823,13 @@
 
           <div class="setting-item">
             <label for="setting-ai_base_url">API Base URL</label>
-            <input type="text" id="setting-ai_base_url" placeholder="https://api.groq.com/openai/v1" autocomplete="off" />
+            <input type="text" id="setting-ai_base_url" placeholder="https://router.bynara.id/v1" autocomplete="off" />
           </div>
 
           <div class="setting-item">
-            <label for="setting-ai_api_key">Groq API Key</label>
-            <input type="password" id="setting-ai_api_key" placeholder="gsk_..." autocomplete="off" />
+            <label for="setting-ai_api_key">AI API Key</label>
+            <input type="password" id="setting-ai_api_key" placeholder="sk-..." autocomplete="off" />
             <button type="button" class="btn-toggle-visibility" data-target="setting-ai_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);cursor:pointer;">Show</button>
-          </div>
-
-          <div class="setting-item">
-            <label for="setting-owm_api_key">OpenWeatherMap API Key</label>
-            <input type="password" id="setting-owm_api_key" placeholder="Free at openweathermap.org" autocomplete="off" />
-            <button type="button" class="btn-toggle-visibility" data-target="setting-owm_api_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);cursor:pointer;">Show</button>
-          </div>
-
-          <div class="setting-item">
-            <label for="setting-railradar_key">RailRadar API Key</label>
-            <input type="password" id="setting-railradar_key" placeholder="Get free at railradar.in/login" autocomplete="off" />
-            <button type="button" class="btn-toggle-visibility" data-target="setting-railradar_key" style="margin-top:8px;padding:6px 12px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);cursor:pointer;">Show</button>
-          </div>
-
-          <div style="background:var(--color-brand-soft);border:1px solid rgba(255,107,0,0.25);border-radius:10px;padding:10px 14px;margin-top:12px;">
-            <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
-              <strong style="color:var(--color-warning);">Train alerts work 100% offline</strong> using the built-in timetable — no API key needed.<br/>
-              API keys only enhance optional features: weather, live GPS tracking, and AI diary generation.
-            </div>
           </div>
         </div>
       </div>
