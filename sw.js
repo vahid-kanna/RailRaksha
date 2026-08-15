@@ -8,7 +8,7 @@
  * Cache-first for static assets (icons, manifest).
  */
 
-const CACHE_NAME = 'railraksha-v4.0';
+const CACHE_NAME = 'railraksha-v4.1';
 
 const SHELL_ASSETS = [
   "./",
