@@ -81,7 +81,7 @@ async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBa
     method: "POST",
     headers,
     body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(60000)
+    signal: AbortSignal.timeout(90000)
   });
 
   if (!response.ok) {
