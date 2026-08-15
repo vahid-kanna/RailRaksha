@@ -3,6 +3,11 @@
   "name": "railraksha",
   "buildCommand": "bash build-keys.sh",
   "outputDirectory": ".",
+  "functions": {
+    "api/chat.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
