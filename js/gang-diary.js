@@ -11,6 +11,7 @@ import { Icons } from './icons.js';
 let isRecording = false;
 let recognition = null;
 let transcriptionText = "";
+let finalTranscript = "";  // accumulates final results; survives recognition restarts
 let elements = {};
 
 export function initGangDiary(els) {
@@ -73,6 +74,9 @@ function startRecording() {
     showTextInputFallback();
     return;
   }
+  // Fresh recording session — clear any previous transcript
+  finalTranscript = "";
+  transcriptionText = "";
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
   recognition.lang = "te-IN";
@@ -83,24 +87,25 @@ function startRecording() {
     isRecording = true;
     updateRecordBtn(true);
     if (elements.transcriptionCard) elements.transcriptionCard.classList.add("visible");
-    if (elements.transcriptionText && !transcriptionText) {
+    if (elements.transcriptionText && !finalTranscript) {
       elements.transcriptionText.textContent = "Listening in Telugu... Tap stop when done.";
     }
   };
 
   recognition.onresult = (event) => {
-    // Rebuild full transcript from ALL results so far — prevents repetition
-    let fullTranscript = "";
+    // Append ONLY new final results (uses event.resultIndex, not 0).
+    // finalTranscript is module-level so it survives recognition restarts
+    // (which reset event.results), fixing both duplication and data loss.
     let interim = "";
-    for (let i = 0; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        fullTranscript += t + " ";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const r = event.results[i];
+      if (r.isFinal) {
+        finalTranscript += r[0].transcript + " ";
       } else {
-        interim += t;
+        interim += r[0].transcript;
       }
     }
-    transcriptionText = fullTranscript;
+    transcriptionText = finalTranscript;
     if (elements.transcriptionText) {
       elements.transcriptionText.textContent = transcriptionText + (interim ? ` ${interim}` : "");
     }
@@ -123,7 +128,8 @@ function startRecording() {
   };
 
   recognition.onend = () => {
-    // If user hasn't tapped stop, auto-restart to keep recording going
+    // If user hasn't tapped stop, auto-restart to keep recording going.
+    // NOTE: finalTranscript persists across restarts, so no text is lost.
     if (isRecording) {
       try {
         recognition.start();
@@ -134,7 +140,7 @@ function startRecording() {
     } else {
       // User tapped stop — finalize
       updateRecordBtn(false);
-      if (transcriptionText.trim()) {
+      if (finalTranscript.trim()) {
         showToast("Recording stopped — tap Generate Diary", "ok");
         if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
       }
@@ -150,7 +156,8 @@ function stopRecording() {
     try { recognition.stop(); } catch {}
   }
   updateRecordBtn(false);
-  if (transcriptionText.trim()) {
+  transcriptionText = finalTranscript;
+  if (finalTranscript.trim()) {
     showToast("Recording stopped — tap Generate Diary", "ok");
     if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
   }
