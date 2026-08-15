@@ -1,7 +1,7 @@
 /**
  * RailRaksha — Single AI Engine (ai-engine.js)
  *
- * Text + Image → Bynara Router (mistral-medium-3-5) — text + vision in one model.
+ * Text + Image → Bynara Router (agnes-2.5-flash) — text + vision in one model.
  * Users can override via Settings.
  */
 
@@ -11,7 +11,7 @@ export function getAISettings() {
     provider: cfg("ai_provider") || "openai_compatible",
     apiKey:   cfg("ai_api_key") || "",
     baseUrl:  cfg("ai_base_url") || "https://router.bynara.id/v1",
-    model:    cfg("ai_model") || "mistral-medium-3-5",
+    model:    cfg("ai_model") || "agnes-2.5-flash",
   };
 }
 
@@ -47,7 +47,7 @@ async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBa
   const useProxy = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel');
   const fetchUrl = useProxy ? '/api/chat' : cleanBaseUrl;
 
-  const activeModel = model || "mistral-medium-3-5";
+  const activeModel = model || "agnes-2.5-flash";
   console.log(`Calling AI API | Model: ${activeModel} | Image: ${!!imageBase64} | URL: ${fetchUrl} ${useProxy ? '(via proxy)' : ''}`);
 
   const headers = { "Content-Type": "application/json" };

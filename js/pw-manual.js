@@ -1,7 +1,7 @@
 /**
  * RailRaksha — PW Manual Voice Assistant (pw-manual.js)
  * Telugu/English voice queries over Indian Railways IRPWM rules.
- * Uses Bynara AI (mistral-medium-3-5) + quick-reference cards.
+ * Uses Bynara AI (agnes-2.5-flash) + quick-reference cards.
  */
 
 import { callAI, getAISettings } from './ai-engine.js';

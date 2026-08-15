@@ -1,7 +1,7 @@
 /**
  * RailRaksha — Voice-to-Gang-Diary (gang-diary.js)
  * Converts spoken Telugu/English input → structured gang diary entry
- * using Groq AI (qwen/qwen3.6-27b).
+ * using Bynara AI (agnes-2.5-flash).
  */
 
 import { saveDiaryEntry, getDiaryEntries } from './db.js';
@@ -53,7 +53,12 @@ function updateAttendance() {
   }
 }
 
-// ── Voice Recording ──────────────────────────────────────────────────────────
+// ── Voice Recording (tap-to-start, tap-to-stop) ─────────────────────────────
+// Browsers auto-stop SpeechRecognition on silence/pause. We override this by
+// auto-restarting in onend when the user hasn't tapped stop. This gives a
+// true "tap to start, tap to stop" experience.
+// Text duplication is fixed by rebuilding the full transcript from ALL
+// results (not appending just the delta).
 
 function toggleRecording() {
   if (isRecording) {
@@ -65,7 +70,6 @@ function toggleRecording() {
 
 function startRecording() {
   if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-    // Fallback: show text input
     showTextInputFallback();
     return;
   }
@@ -78,42 +82,62 @@ function startRecording() {
   recognition.onstart = () => {
     isRecording = true;
     updateRecordBtn(true);
-    transcriptionText = "";
     if (elements.transcriptionCard) elements.transcriptionCard.classList.add("visible");
-    if (elements.transcriptionText) elements.transcriptionText.textContent = "Listening in Telugu...";
+    if (elements.transcriptionText && !transcriptionText) {
+      elements.transcriptionText.textContent = "Listening in Telugu... Tap stop when done.";
+    }
   };
 
   recognition.onresult = (event) => {
+    // Rebuild full transcript from ALL results so far — prevents repetition
+    let fullTranscript = "";
     let interim = "";
-    let final = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    for (let i = 0; i < event.results.length; i++) {
       const t = event.results[i][0].transcript;
-      if (event.results[i].isFinal) final += t + " ";
-      else interim += t;
+      if (event.results[i].isFinal) {
+        fullTranscript += t + " ";
+      } else {
+        interim += t;
+      }
     }
-    transcriptionText += final;
+    transcriptionText = fullTranscript;
     if (elements.transcriptionText) {
-      elements.transcriptionText.textContent = transcriptionText + (interim ? `[${interim}]` : "");
+      elements.transcriptionText.textContent = transcriptionText + (interim ? ` ${interim}` : "");
     }
   };
 
   recognition.onerror = (event) => {
-    isRecording = false;
-    updateRecordBtn(false);
     if (event.error === "network") {
+      isRecording = false;
+      updateRecordBtn(false);
       showToast("No internet — try typing your work details below", "warn");
       showTextInputFallback();
     } else if (event.error === "not-allowed") {
+      isRecording = false;
+      updateRecordBtn(false);
       showToast("Please allow microphone access", "warn");
+    } else if (event.error === "no-speech" || event.error === "aborted") {
+      // Normal when user pauses — don't stop. onend will auto-restart.
+      console.log(`Speech recognition: ${event.error} (ignoring, will auto-restart)`);
     }
   };
 
   recognition.onend = () => {
-    isRecording = false;
-    updateRecordBtn(false);
-    if (transcriptionText.trim()) {
-      showToast("Recording complete — tap Generate Diary", "ok");
-      if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
+    // If user hasn't tapped stop, auto-restart to keep recording going
+    if (isRecording) {
+      try {
+        recognition.start();
+      } catch (e) {
+        // start() can throw if called too quickly after end — retry shortly
+        setTimeout(() => { if (isRecording) { try { recognition.start(); } catch {} } }, 100);
+      }
+    } else {
+      // User tapped stop — finalize
+      updateRecordBtn(false);
+      if (transcriptionText.trim()) {
+        showToast("Recording stopped — tap Generate Diary", "ok");
+        if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
+      }
     }
   };
 
@@ -121,7 +145,15 @@ function startRecording() {
 }
 
 function stopRecording() {
-  if (recognition) recognition.stop();
+  isRecording = false;
+  if (recognition) {
+    try { recognition.stop(); } catch {}
+  }
+  updateRecordBtn(false);
+  if (transcriptionText.trim()) {
+    showToast("Recording stopped — tap Generate Diary", "ok");
+    if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
+  }
 }
 
 function updateRecordBtn(recording) {

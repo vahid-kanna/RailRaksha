@@ -15,7 +15,7 @@ import { API_KEYS } from './config-keys.js';
 export const DEFAULT_CONFIG = {
   // ── AI Provider (Bynara Router) — one model for text AND image tasks ─────
   ai_provider:  "openai_compatible",
-  ai_model:     "mistral-medium-3-5",
+  ai_model:     "agnes-2.5-flash",
   ai_base_url:  "https://router.bynara.id/v1",
   ai_api_key:   API_KEYS.bynara,
 
@@ -80,13 +80,12 @@ export function getConfigNum(key) {
  */
 export function applyDefaultsOnce() {
   let configVersion = localStorage.getItem("_config_version");
-  if (configVersion !== "2.4") {
-    // Force-update AI settings to Bynara Router (Gemini removed in v2.2,
-    // Groq rate-limited in v2.3, Bynara default from v2.4).
+  if (configVersion !== "2.5") {
+    // Force-update AI settings to Bynara Router — model changed to agnes-2.5-flash in v2.5.
     // Only overwrite if the stored values are old defaults or missing.
     const oldProvider = localStorage.getItem("ai_provider");
     const oldModel = localStorage.getItem("ai_model");
-    if (!oldProvider || oldProvider === "gemini" || oldModel === "llama-3.3-70b-versatile" || oldModel === "gemini-2.5-flash" || oldModel === "qwen/qwen3.6-27b" || !oldModel) {
+    if (!oldProvider || oldProvider === "gemini" || oldModel === "llama-3.3-70b-versatile" || oldModel === "gemini-2.5-flash" || oldModel === "qwen/qwen3.6-27b" || oldModel === "mistral-medium-3-5" || !oldModel) {
       localStorage.setItem("ai_provider",  DEFAULT_CONFIG.ai_provider);
       localStorage.setItem("ai_model",     DEFAULT_CONFIG.ai_model);
       localStorage.setItem("ai_base_url",  DEFAULT_CONFIG.ai_base_url);
@@ -97,7 +96,7 @@ export function applyDefaultsOnce() {
     localStorage.removeItem("image_ai_model");
     localStorage.removeItem("image_ai_api_key");
     localStorage.removeItem("gemini_api_key");
-    localStorage.setItem("_config_version", "2.4");
+    localStorage.setItem("_config_version", "2.5");
   }
 
   for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {

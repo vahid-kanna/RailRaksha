@@ -451,7 +451,7 @@ function loadSettings() {
       if (key === "ai_base_url") {
         el.value = cfg(key) || "https://router.bynara.id/v1";
       } else if (key === "ai_model") {
-        el.value = cfg(key) || "mistral-medium-3-5";
+        el.value = cfg(key) || "agnes-2.5-flash";
       } else if (key === "ai_provider") {
         el.value = cfg(key) || "openai_compatible";
       } else if (key === "alert_mode") {
@@ -534,7 +534,7 @@ function fillApiKeyFields() {
   const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
   
   document.getElementById("setting-ai_provider").value = cfg("ai_provider") || "openai_compatible";
-  document.getElementById("setting-ai_model").value = cfg("ai_model") || "mistral-medium-3-5";
+  document.getElementById("setting-ai_model").value = cfg("ai_model") || "agnes-2.5-flash";
   document.getElementById("setting-ai_base_url").value = cfg("ai_base_url") || "https://router.bynara.id/v1";
   document.getElementById("setting-ai_api_key").value = cfg("ai_api_key") || "";
   document.getElementById("setting-owm_api_key").value = cfg("owm_api_key") || "";

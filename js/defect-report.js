@@ -1,6 +1,6 @@
 /**
  * RailRaksha — Track Defect Photo Report (defect-report.js)
- * Uses Bynara vision (mistral-medium-3-5) for AI-powered defect classification.
+ * Uses Bynara vision (agnes-2.5-flash) for AI-powered defect classification.
  */
 
 import { saveDefectReport, getDefectReports, updateDefectStatus } from './db.js';
@@ -108,9 +108,23 @@ async function analyzeDefect() {
   showAnalyzingOverlay(true, "Analyzing track defect...", "AI is examining the photo");
 
   const prompt = `You are an expert Indian Railways track engineer with 20+ years of experience.
-Analyze this photo of railway track and identify any defects or issues.
+Analyze this photo to determine whether it contains railway track/infrastructure.
 
-Respond in this exact JSON format:
+If the photo is NOT railway-related (e.g., a person, food, random objects, selfie, landscape with no track, animals, vehicles on road, etc.), respond ONLY in this exact JSON format:
+{
+  "defectType": "Not railway-related image",
+  "severity": "INFO",
+  "irpwmCode": "N/A",
+  "confidence": "HIGH",
+  "description": "Brief, polite explanation that this image does not appear to be related to railway track or infrastructure.",
+  "immediateAction": "Please capture or upload a photo of the railway track, sleepers, rails, ballast, or related infrastructure.",
+  "reportingRequired": false,
+  "speedRestriction": "None",
+  "irpwmReference": "N/A",
+  "generalInfo": "One sentence describing what the image actually shows (e.g., 'This appears to be a selfie/person/food/vehicle/etc.')"
+}
+
+If the photo DOES contain railway track/infrastructure, identify any defects or issues and respond in this exact JSON format:
 {
   "defectType": "Brief defect name (e.g., 'Cracked Rail Weld', 'Broken Concrete Sleeper', 'Missing Elastic Rail Clip', 'Gauge Widening', 'Rail Corrosion', 'Broken Fish Plate', 'Damaged Ballast', 'No defect visible')",
   "severity": "CRITICAL | HIGH | MEDIUM | LOW",
@@ -120,7 +134,8 @@ Respond in this exact JSON format:
   "immediateAction": "What the Gang Mate should do right now",
   "reportingRequired": true,
   "speedRestriction": "Recommended speed restriction in km/h, or 'None'",
-  "irpwmReference": "Relevant IRPWM paragraph if known, or 'N/A'"
+  "irpwmReference": "Relevant IRPWM paragraph if known, or 'N/A'",
+  "generalInfo": "Brief general observation about the track photo (e.g., 'Broad Gauge track with concrete sleepers in daylight')"
 }
 
 If you cannot identify railway track defects or the image is unclear, set defectType to 'Image unclear - please retake' and severity to 'LOW'.`;
@@ -167,6 +182,14 @@ function displayAnalysis(analysis) {
   setText(elements.detailDescription, analysis.description);
   setText(elements.recommendedAction, analysis.immediateAction);
   if (elements.irpwmReference) elements.irpwmReference.textContent = `IRPWM Ref: ${analysis.irpwmReference}`;
+
+  // Show general info if provided (useful for non-railway images)
+  if (elements.detailGeneralInfo && analysis.generalInfo) {
+    elements.detailGeneralInfo.textContent = analysis.generalInfo;
+    elements.detailGeneralInfo.style.display = "block";
+  } else if (elements.detailGeneralInfo) {
+    elements.detailGeneralInfo.style.display = "none";
+  }
 
   // Store for sharing
   elements.defectAnalysisCard.dataset.analysis = JSON.stringify({
@@ -309,6 +332,8 @@ function resetDefectForm() {
   if (elements.btnAnalyze) elements.btnAnalyze.style.display = "none";
   if (elements.btnShareReport) elements.btnShareReport.style.display = "none";
   elements.defectAnalysisCard?.classList.remove("visible");
+  // Hide general info on reset
+  if (elements.detailGeneralInfo) elements.detailGeneralInfo.style.display = "none";
   if (elements.fileInput) elements.fileInput.value = "";
   if (elements.uploadInput) elements.uploadInput.value = "";
 }
