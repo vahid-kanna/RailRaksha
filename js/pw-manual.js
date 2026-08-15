@@ -170,7 +170,8 @@ Answer in simple, clear English that a track maintenance worker can immediately 
 3. What immediate action the Gang Mate should take
 4. Any safety precautions
 
-Keep your answer under 200 words. Be specific and actionable.`;
+Keep your answer under 200 words. Be specific and actionable.
+Respond in plain text only — do NOT wrap your answer in JSON or code blocks.`;
 
   try {
     console.log("Calling AI for PW Manual search...");
@@ -195,6 +196,15 @@ Keep your answer under 200 words. Be specific and actionable.`;
 // ── Format AI Answer — clean Q&A display, no raw JSON brackets ──────────────
 
 function formatManualAnswer(res, query) {
+  // Helper: safely turn any value into displayable text (no [object Object])
+  const safeVal = (v) => {
+    if (v == null) return "—";
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return v.map(safeVal).join("\n• ");
+    if (typeof v === "object") return JSON.stringify(v, null, 2);
+    return String(v);
+  };
+
   // Case 1: AI returned JSON with structured fields
   if (res && typeof res === "object" && !res.rawText) {
     const keys = Object.keys(res);
@@ -202,14 +212,14 @@ function formatManualAnswer(res, query) {
     if (res.answer) {
       return {
         title: `<span class="qa-label">Q:</span> ${escapeHtml(query)}`,
-        body: `<span class="qa-label">A:</span> ${escapeHtml(String(res.answer))}`
+        body: `<span class="qa-label">A:</span> ${escapeHtml(safeVal(res.answer))}`
       };
     }
     // If it has multiple fields, render each as a labeled row
     if (keys.length > 1) {
       const rows = keys.map(k => {
         const label = prettifyKey(k);
-        const val = escapeHtml(String(res[k]));
+        const val = escapeHtml(safeVal(res[k]));
         return `<div class="qa-row"><span class="qa-key">${label}</span><span class="qa-val">${val}</span></div>`;
       }).join("");
       return {
@@ -218,7 +228,7 @@ function formatManualAnswer(res, query) {
       };
     }
     // Single field
-    const val = escapeHtml(String(Object.values(res)[0]));
+    const val = escapeHtml(safeVal(Object.values(res)[0]));
     return {
       title: `<span class="qa-label">Q:</span> ${escapeHtml(query)}`,
       body: `<span class="qa-label">A:</span> ${val}`
