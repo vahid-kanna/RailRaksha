@@ -7,6 +7,7 @@
 [![Vision AI](https://img.shields.io/badge/AI%20Engine-Bynara%20Vision-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)](https://railraksha.vercel.app)
 [![Domain](https://img.shields.io/badge/Domain-Indian%20Railways%20Safety-138808?style=for-the-badge&logo=train&logoColor=white)](https://railraksha.vercel.app)
 [![Language](https://img.shields.io/badge/Multilingual-Telugu%20%7C%20English-blue?style=for-the-badge)](https://railraksha.vercel.app)
+[![License](https://img.shields.io/badge/License-Proprietary%20%2F%20Public%20Safety-red?style=for-the-badge)](#-license--intellectual-property)
 
 **AI-Powered Safety, Train Proximity Alerts & Field Documentation Platform for Indian Railways Track Workers.**
 
@@ -184,6 +185,7 @@ RailRaksha is configured for **Vercel** and **Netlify** with automatic build-tim
 
 ---
 
-## 📄 License
+## 📄 License & Intellectual Property
 
-MIT License — free for non-commercial and safety-enhancement use across Indian Railways.
+Copyright © 2026 Shaik Vahid Basha. All rights reserved.  
+Developed for Indian Railways track maintainer safety and field operations. Authorized for non-commercial safety enhancement, field research, and academic evaluation across Indian Railways. Unauthorized commercial redistribution or closed-source replication is prohibited.
