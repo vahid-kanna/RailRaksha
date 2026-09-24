@@ -1,354 +1,305 @@
 /**
- * RailRaksha — Train Alert Engine v2 (train-alert.js)
+ * train-alert.js — Track-aware threat engine + single-voice alert orchestrator.
  *
- * Two-layer safety architecture:
- *  Layer 1 — SCHEDULE (always offline): Alert based on scheduled SKM time
- *  Layer 2 — LIVE GPS (when online): Alert based on real distance from worker
+ * APPROACH TEST (dir = +1 UP, −1 DN; s_w = worker km, σ_w = worker σ in km)
+ *   D_lead = (s_w − s_lead)·dir − σ_w      smallest plausible distance-to-go
+ *   D_lag  = (s_w − s_lag )·dir + σ_w      largest  plausible distance-to-go
+ *   APPROACHING  ⇔ D_lead > 0
+ *   AT WORKSITE  ⇔ D_lead ≤ 0  ∧  D_lag ≥ −(L_train + buffer)
+ *   PASSED       ⇔ D_lag  < −(L_train + buffer)
+ *   ETA_lower    = D_lead / v_max          (never optimistic)
  *
- * Alert cascade:
- *  PREPARE  → Train > 8 km but < 15 km, OR > 20 min by schedule
- *  WARN     → Train 4–8 km, OR 8–15 min by schedule
- *  CRITICAL → Train < 4 km (live), OR < 7 min (schedule) — CLEAR TRACK NOW
+ * LEVELS (escalate instantly, de-escalate after 15 s continuously lower)
+ *   CRITICAL : ETA_lower ≤ T_clear (180 s)  ∨ D_lead ≤ 3 km  ∨ AT WORKSITE
+ *   WARN     : ETA_lower ≤ 300 s            ∨ D_lead ≤ 8 km
+ *   PREPARE  : ETA_lower ≤ 600 s            ∨ D_lead ≤ 15 km
+ *   AMBIENT  : ETA_lower ≤ 30 min
+ *   Unconfirmed (schedule-only) trains are capped at WARN.
+ *
+ * TRACK FILTER
+ *   active ⇔ mode = BOTH ∨ train.line = BOTH ∨ train.line = mode
+ *   Non-active trains are AMBIENT for sirens, BUT a non-active CRITICAL raises a
+ *   one-shot "ADJACENT LINE" cue: stepping back onto the other line into an
+ *   oncoming train is a classic gangman fatality pattern; silencing it fully is wrong.
  */
 
-import { getActiveTrains, getAlertLevel, getAlertThresholds } from './timetable-data.js';
-import {
-  fetchLiveTrainStatus, interpolateTrainPosition, distanceToWorker,
-  getDistanceAlertLevel, getCachedPosition, setCachedPosition,
-  getDistThresholds, formatDistanceAlert, isTrainApproaching, gpsToKmFromMAS
-} from './live-trains.js';
-import { logAlert } from './db.js';
+export const LEVEL = Object.freeze({ NONE: 0, AMBIENT: 1, PREPARE: 2, WARN: 3, CRITICAL: 4, CLEARED: -1 });
+export const LEVEL_NAME = { 0: 'NONE', 1: 'AMBIENT', 2: 'PREPARE', 3: 'WARN', 4: 'CRITICAL', '-1': 'CLEARED' };
+export const TRACK_MODE = Object.freeze({ UP: 'UP', DN: 'DN', BOTH: 'BOTH' });
 
-// ── State ────────────────────────────────────────────────────────────────────
-let workSessionActive = false;
-let scheduleInterval  = null;   // checks every 30 sec (schedule-based)
-let liveInterval      = null;   // checks every 60 sec (live API)
-let gpsInterval       = null;   // distance calc every 15 sec (GPS-based)
-let wakeLock          = null;
-let onTrainsUpdate    = null;
-let onDistanceUpdate  = null;
-let sessionStartTime  = null;
-const alertedTrains   = {};     // trainNo → last alerted level (avoid repeat spam)
+export const DEFAULT_ALERT_CFG = {
+  clearanceS: 180, warnS: 300, prepareS: 600, ambientS: 1800,
+  criticalKm: 3, warnKm: 8, prepareKm: 15,
+  passBufferKm: 0.2, deescalateHoldS: 15,
+  unconfirmedMaxLevel: LEVEL.WARN,
+};
 
-// ── Callbacks ─────────────────────────────────────────────────────────────────
-export function setTrainsUpdateCallback(cb)   { onTrainsUpdate  = cb; }
-export function setDistanceUpdateCallback(cb) { onDistanceUpdate = cb; }
-export function isWorkSessionActive()         { return workSessionActive; }
-export function getSessionStartTime()         { return sessionStartTime; }
+/** Pure evaluation of one train against one worker. */
+export function evaluateTrain(worker, ts, cfg = DEFAULT_ALERT_CFG) {
+  const dir = ts.dir === 'UP' ? 1 : -1;
+  const sW = (worker.sigmaM ?? 0) / 1000;
+  const dLead = (worker.km - ts.kmLead) * dir - sW;
+  const dLag = (worker.km - ts.kmLag) * dir + sW;
+  const dNom = (worker.km - ts.kmNominal) * dir;
+  const passed = dLag < -(ts.lengthKm + cfg.passBufferKm);
+  const atSite = !passed && dLead <= 0;
+  const etaLowerS = dLead > 0 ? (dLead / ts.vmaxKmh) * 3600 : 0;
+  const etaNomS = dNom > 0 ? (dNom / Math.max(20, ts.speedKmh || ts.vmaxKmh)) * 3600 : 0;
 
-// ── Session Control ────────────────────────────────────────────────────────────
+  let level;
+  if (passed) level = ts.confirmed ? LEVEL.CLEARED : LEVEL.NONE;
+  else if (!ts.confirmed && dLead <= 0) level = LEVEL.AMBIENT;       // "may still come" (delay unknown)
+  else if (atSite || etaLowerS <= cfg.clearanceS || dLead <= cfg.criticalKm) level = LEVEL.CRITICAL;
+  else if (etaLowerS <= cfg.warnS || dLead <= cfg.warnKm) level = LEVEL.WARN;
+  else if (etaLowerS <= cfg.prepareS || dLead <= cfg.prepareKm) level = LEVEL.PREPARE;
+  else if (etaLowerS <= cfg.ambientS) level = LEVEL.AMBIENT;
+  else level = LEVEL.NONE;
 
-export async function startWorkSession() {
-  if (workSessionActive) return;
-  workSessionActive = true;
-  sessionStartTime  = new Date();
-  Object.keys(alertedTrains).forEach(k => delete alertedTrains[k]);
-
-  // Acquire screen wake lock so phone doesn't sleep on track
-  try {
-    if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
-  } catch {}
-
-  // Immediate checks
-  await checkBySchedule();
-  await checkByLiveGPS();
-
-  // Periodic checks
-  scheduleInterval = setInterval(checkBySchedule, 30_000);  // every 30 sec
-  liveInterval     = setInterval(fetchLivePositions, 60_000); // every 60 sec
-  gpsInterval      = setInterval(checkByLiveGPS, 15_000);    // every 15 sec
+  if (!ts.confirmed && level > cfg.unconfirmedMaxLevel) level = cfg.unconfirmedMaxLevel;
+  return { level, atSite, passed, dLeadKm: dLead, dLagKm: dLag, dNomKm: dNom, etaLowerS, etaNomS };
 }
 
-export function stopWorkSession() {
-  workSessionActive = false;
-  sessionStartTime  = null;
-  if (wakeLock) { wakeLock.release(); wakeLock = null; }
-  clearInterval(scheduleInterval);
-  clearInterval(liveInterval);
-  clearInterval(gpsInterval);
-  scheduleInterval = liveInterval = gpsInterval = null;
-  Object.keys(alertedTrains).forEach(k => delete alertedTrains[k]);
-  // Notify UI to reset
-  if (onTrainsUpdate) onTrainsUpdate([]);
-  if (onDistanceUpdate) onDistanceUpdate(null);
-}
+export const isActiveLine = (line, mode) => mode === TRACK_MODE.BOTH || line === 'BOTH' || line === mode;
 
-// ── Layer 1: Schedule-based check (offline, every 30 sec) ────────────────────
-
-export async function checkBySchedule() {
-  if (!workSessionActive) return;
-  const trains = getActiveTrains();
-
-  // ── HARD GATE: Never alert for trains beyond 120 min ──────────────────
-  // This prevents stale/wrapped trains from firing phantom alerts.
-  const ALERT_HORIZON_MIN = 120;
-
-  if (onTrainsUpdate) onTrainsUpdate(trains);
-
-  // Determine alert mode
-  const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
-  const alertMode = cfg("alert_mode") || "station";
-
-  for (const train of trains) {
-    // Train INSIDE the work section → always CRITICAL, always alert
-    if (train.inSection) {
-      escalateAlert(train.no, "CRITICAL", train, "schedule",
-        `INSIDE SKM↔UPD section — clear the track`);
-      continue;
-    }
-
-    // Skip trains beyond the alert horizon — they are NOT a danger right now
-    const effectiveMin = alertMode === "station"
-      ? (train.minutesToWork ?? train.minutesUntil)
-      : train.minutesUntil;
-    if (effectiveMin > ALERT_HORIZON_MIN) continue;
-
-    const level = train.alertLevel;
-    if (level === "OK" || level === "PASSED") continue;
-
-    const detail = alertMode === "station"
-      ? `${effectiveMin} min to section · ${train.nearStation || ""}`
-      : `${train.minutesUntil} min by schedule`;
-
-    escalateAlert(train.no, level, train, "schedule", detail);
+/**
+ * Stateful engine: hysteresis per train, priority ordering, events.
+ */
+export class ThreatEngine {
+  constructor(cfg = {}) {
+    this.cfg = { ...DEFAULT_ALERT_CFG, ...cfg };
+    this.mode = TRACK_MODE.BOTH;
+    this.mem = new Map(); // key → { level, lowerSince, peak, clearedAnnounced, adjacentAnnounced }
   }
-}
+  setMode(mode) { if (!TRACK_MODE[mode]) throw new Error(mode); this.mode = mode; }
 
-// ── Layer 2: Live API — fetch positions for all active trains ─────────────────
-
-const livePositions = new Map(); // trainNo → { kmFromMAS, speed, direction, fetchedAt }
-
-export async function fetchLivePositions() {
-  if (!workSessionActive) return;
-  // Use getConfig so the pre-baked key from config.js is used automatically
-  const cfg = (window.getConfig) ? window.getConfig : (k) => localStorage.getItem(k) || "";
-  const railRadarKey = cfg("railradar_key") || localStorage.getItem("railradar_key") || "";
-  if (!railRadarKey) return; // No key = skip live, rely on schedule
-
-  const trains = getActiveTrains().filter(t => t.alertLevel !== "PASSED").slice(0, 8);
-  const fetches = trains.map(async (train) => {
-    const cached = getCachedPosition(train.no);
-    if (cached) {
-      // Rehydrate cached position (90s TTL) into the live map
-      livePositions.set(train.no, {
-        kmFromMAS: cached.position,
-        speed: train.speed,
-        direction: train.dir,
-        fetchedAt: cached.timestamp
-      });
-      return;
-    }
-
-    const liveData = await fetchLiveTrainStatus(train.no, railRadarKey);
-    if (!liveData) return;
-
-    const kmFromMAS = interpolateTrainPosition(
-      liveData.lastStation,
-      liveData.departureTime,
-      train.speed,
-      train.dir,
-      liveData.delayMinutes
-    );
-    livePositions.set(train.no, { kmFromMAS, speed: train.speed, direction: train.dir, fetchedAt: Date.now() });
-    setCachedPosition(train.no, kmFromMAS, null);
-  });
-  await Promise.allSettled(fetches);
-}
-
-// ── Layer 2: GPS distance check (every 15 sec) ───────────────────────────────
-
-export async function checkByLiveGPS() {
-  if (!workSessionActive) return;
-  const workerGPS = window._lastGPS;
-  if (!workerGPS) return; // No GPS available — schedule-only mode
-
-  // Estimate worker's km from MAS using their GPS coordinates
-  const workerKmFromMAS = gpsToKmFromMAS(workerGPS.lat, workerGPS.lon);
-
-  const trains = getActiveTrains().filter(t => t.alertLevel !== "PASSED");
-
-  // ── HARD GATE: skip trains beyond 120 min (same as checkBySchedule) ──
-  // Prevents far-future/wrapped trains from producing phantom distances and
-  // false "approaching" alerts when no live GPS data exists for them.
-  const ALERT_HORIZON_MIN = 120;
-
-  let nearestDistKm = Infinity;
-  let nearestTrain  = null;
-
-  for (const train of trains) {
-    // ── SAFETY FIRST: train INSIDE the work section ─────────────────────────
-    // No GPS calculation needed — if it's in the section, alert immediately.
-    if (train.inSection) {
-      escalateAlert(train.no, "CRITICAL", train, "live",
-        "INSIDE SKM↔UPD section — clear the track");
-      // Also count as nearest (0 km) for the distance panel
-      if (nearestDistKm > 0) {
-        nearestDistKm = 0;
-        nearestTrain  = { ...train, distKm: 0 };
+  update(worker, trainStates, nowMs) {
+    if (!worker) return { primary: null, threats: [], ambient: [], events: [], noLocation: true };
+    const events = [];
+    const rows = [];
+    const seen = new Set();
+    for (const ts of trainStates) {
+      seen.add(ts.key);
+      const ev = evaluateTrain(worker, ts, this.cfg);
+      const m = this.mem.get(ts.key) ?? { level: LEVEL.NONE, lowerSince: null, peak: LEVEL.NONE, clearedAnnounced: false, adjacentAnnounced: false };
+      let level = m.level;
+      if (ev.level === LEVEL.CLEARED) {
+        if (m.peak >= LEVEL.WARN && !m.clearedAnnounced) { events.push({ type: 'CLEARED', ts }); m.clearedAnnounced = true; }
+        level = LEVEL.CLEARED; m.lowerSince = null;
+      } else if (ev.level >= m.level || m.level === LEVEL.CLEARED) {
+        level = ev.level; m.lowerSince = null;
+      } else {
+        m.lowerSince ??= nowMs;
+        if ((nowMs - m.lowerSince) / 1000 >= this.cfg.deescalateHoldS) { level = ev.level; m.lowerSince = null; }
       }
-      continue;
-    }
-
-    const livePos = livePositions.get(train.no);
-    let trainKmFromMAS;
-
-    if (livePos) {
-      trainKmFromMAS = livePos.kmFromMAS;
-    } else {
-      // No live data — estimate from schedule, but ONLY if within horizon.
-      // Far-future trains produce nonsense km estimates (hundreds of km away),
-      // which the schedule path should have already excluded.
-      const minUntil = train.minutesUntil;
-      if (minUntil > ALERT_HORIZON_MIN) continue; // skip far trains
-      const kmTraveled = (minUntil / 60) * train.speed;
-      // DOWN train: has NOT reached SKM yet → it's north of SKM (higher km)
-      // UP train:   has NOT reached SKM yet → it's south of SKM (lower km)
-      trainKmFromMAS = train.dir === "D"
-        ? workerKmFromMAS + kmTraveled   // still north of worker, approaching
-        : workerKmFromMAS - kmTraveled;  // still south of worker, approaching
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // KEY SAFETY LOGIC: Only alert if the train is APPROACHING the worker.
-    // If the train has already passed and is now receding (moving away),
-    // it poses NO danger — skip it entirely.
-    // ─────────────────────────────────────────────────────────────────────────
-    const approaching = isTrainApproaching(trainKmFromMAS, workerKmFromMAS, train.dir);
-    if (!approaching) {
-      // Train has already passed this location — clear its alert state
-      if (alertedTrains[train.no]) {
-        delete alertedTrains[train.no];
+      m.level = level; m.peak = Math.max(m.peak, level);
+      const active = isActiveLine(ts.line, this.mode);
+      if (!active && level === LEVEL.CRITICAL && !ev.passed && !m.adjacentAnnounced) {
+        events.push({ type: 'ADJACENT', ts }); m.adjacentAnnounced = true;
       }
-      continue; // No alert needed
+      this.mem.set(ts.key, m);
+      rows.push({ ...ts, ...ev, level, active });
     }
+    for (const k of this.mem.keys()) if (!seen.has(k)) this.mem.delete(k);
 
-    // Calculate distance to worker
-    const distKm = distanceToWorker(trainKmFromMAS, workerGPS.lat, workerGPS.lon);
+    const score = r => (r.active ? 1e7 : 0) + Math.max(0, r.level) * 1e6 + (1e6 - Math.min(999999, r.etaLowerS));
+    const visible = rows.filter(r => r.level > LEVEL.NONE).sort((a, b) => score(b) - score(a));
+    const threats = visible.filter(r => r.active && r.level >= LEVEL.PREPARE);
+    const ambient = visible.filter(r => !(r.active && r.level >= LEVEL.PREPARE));
+    return { primary: threats[0] ?? null, threats, ambient, events, noLocation: false };
+  }
+}
 
-    if (distKm < nearestDistKm) {
-      nearestDistKm = distKm;
-      nearestTrain  = { ...train, distKm };
+/* ================================================================== *
+ * Output channels
+ * ================================================================== */
+
+const TE_DIGITS = ['సున్నా', 'ఒకటి', 'రెండు', 'మూడు', 'నాలుగు', 'ఐదు', 'ఆరు', 'ఏడు', 'ఎనిమిది', 'తొమ్మిది'];
+const EN_DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const LINE_TE = { UP: 'అప్ లైన్', DN: 'డౌన్ లైన్', BOTH: 'రెండు లైన్ల' };
+const LINE_EN = { UP: 'UP line', DN: 'DOWN line', BOTH: 'either line' };
+const spokenKm = d => (d >= 2 ? Math.round(d) : Math.max(0.5, Math.round(d * 2) / 2));
+
+export function buildMessage(kind, r, extraCount = 0) {
+  const teNo = [...r.no].map(c => TE_DIGITS[c] ?? c).join(' ');
+  const enNo = [...r.no].map(c => EN_DIGITS[c] ?? c).join(' ');
+  const km = spokenKm(Math.max(0, r.dLeadKm ?? 0));
+  const min = Math.max(1, Math.round((r.etaLowerS ?? 0) / 60));
+  const lt = LINE_TE[r.line], le = LINE_EN[r.line];
+  const tag = r.confirmed === false ? { te: 'షెడ్యూల్ ప్రకారం, ', en: 'Scheduled, unconfirmed. ' } : { te: '', en: '' };
+  const more = extraCount > 0 ? { te: ` మరో ${extraCount} రైలు కూడా వస్తోంది.`, en: ` Plus ${extraCount} more.` } : { te: '', en: '' };
+  switch (kind) {
+    case 'CRITICAL':
+      if (r.atSite) return { te: `ప్రమాదం! ${lt} లో రైలు ${teNo} ఇక్కడే ఉంది! ట్రాక్ వదలండి!`, en: `Danger! Train ${enNo} at worksite on ${le}! Get clear!` };
+      return { te: `ప్రమాదం! వెంటనే ట్రాక్ ఖాళీ చేయండి! ${lt} లో రైలు ${teNo}, ${km} కిలోమీటర్ల దూరం!${more.te}`,
+               en: `Danger! Clear the track now! Train ${enNo} on ${le}, ${km} kilometres.${more.en}` };
+    case 'WARN':
+      return { te: `${tag.te}జాగ్రత్త! ${lt} లో రైలు ${teNo}, ${km} కిలోమీటర్ల దూరం! సామాను తీయండి.${more.te}`,
+               en: `${tag.en}Warning! Train ${enNo} on ${le}, ${km} kilometres, about ${min} minutes. Remove tools.${more.en}` };
+    case 'PREPARE':
+      return { te: `${tag.te}సిద్ధంగా ఉండండి. ${lt} లో రైలు ${teNo}, ${min} నిమిషాల్లో.`,
+               en: `${tag.en}Prepare. Train ${enNo} on ${le}, in about ${min} minutes.` };
+    case 'ADJACENT':
+      return { te: `పక్క ${lt} లో రైలు ${teNo} వస్తోంది. ఆ లైన్ పైకి వెళ్ళవద్దు!`, en: `Train ${enNo} on adjacent ${le}. Do not step onto it!` };
+    case 'CLEARED':
+      return { te: `రైలు ${teNo} వెళ్ళిపోయింది. తదుపరి రైలు కోసం చూడండి.`, en: `Train ${enNo} has passed. Watch for the next train.` };
+    default: return { te: '', en: '' };
+  }
+}
+
+/** One voice at a time. Higher priority pre-empts; equal/lower waits (latest wins). */
+export class VoiceManager {
+  constructor({ synth = globalThis.speechSynthesis, lang = 'te+en', clipPlayer = null } = {}) {
+    this.synth = synth; this.lang = lang; this.clipPlayer = clipPlayer;
+    this.current = null; this.pending = null; this.watchdog = null;
+    this.teVoice = null; this.enVoice = null;
+    const pick = () => {
+      const v = this.synth?.getVoices?.() ?? [];
+      this.teVoice = v.find(x => /^te(-|_|$)/i.test(x.lang)) ?? null;
+      this.enVoice = v.find(x => /^en-IN/i.test(x.lang)) ?? v.find(x => /^en/i.test(x.lang)) ?? null;
+    };
+    pick(); this.synth?.addEventListener?.('voiceschanged', pick);
+  }
+  get hasTelugu() { return !!this.teVoice || !!this.clipPlayer; }
+
+  speak(msg) { // msg: { priority, te, en, key }
+    if (!this.synth) return;
+    if (this.current) {
+      if (msg.priority > this.current.priority) { this._stop(); }
+      else { if (!this.pending || msg.priority >= this.pending.priority) this.pending = msg; return; }
     }
+    this._play(msg);
+  }
+  _play(msg) {
+    this.current = msg;
+    const parts = [];
+    const wantTe = this.lang !== 'en', wantEn = this.lang !== 'te' || !this.hasTelugu;
+    if (wantTe && this.teVoice) parts.push({ text: msg.te, voice: this.teVoice, lang: 'te-IN' });
+    else if (wantTe && this.clipPlayer) parts.push({ clip: msg.clipKey });
+    if (wantEn) parts.push({ text: msg.en, voice: this.enVoice, lang: 'en-IN' });
+    const totalChars = parts.reduce((n, p) => n + (p.text?.length ?? 40), 0);
+    clearTimeout(this.watchdog); // Chrome sometimes never fires onend
+    this.watchdog = setTimeout(() => this._done(), 2500 + totalChars * 90);
+    parts.forEach((p, i) => {
+      if (!p.text) return;
+      const u = new SpeechSynthesisUtterance(p.text);
+      if (p.voice) u.voice = p.voice; u.lang = p.lang; u.rate = 0.95; u.volume = 1;
+      if (i === parts.length - 1) { u.onend = () => this._done(); u.onerror = () => this._done(); }
+      this.synth.speak(u);
+    });
+  }
+  _stop() { clearTimeout(this.watchdog); this.synth.cancel(); this.current = null; }
+  _done() {
+    clearTimeout(this.watchdog); this.current = null;
+    const next = this.pending; this.pending = null;
+    if (next) this._play(next);
+  }
+  cancelAll() { this.pending = null; this._stop(); }
+}
 
-    // Fire alert if within threshold
-    const distLevel = getDistanceAlertLevel(distKm);
-    if (distLevel !== "OK") {
-      escalateAlert(train.no, distLevel, train, "live",
-        `${distKm.toFixed(1)} km away — approaching`);
+/** One AudioContext, one pattern at a time. */
+export class SirenManager {
+  constructor() { this.ctx = null; this.level = LEVEL.NONE; this.timer = null; this.muteUntil = 0; }
+  unlock() { // must be called from a user gesture
+    this.ctx ??= new (globalThis.AudioContext || globalThis.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+  _tone(freqA, freqB, durS, gain = 0.9) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(freqA, t);
+    o.frequency.linearRampToValueAtTime(freqB, t + durS);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + durS);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + durS + 0.05);
+  }
+  set(level, { muted = false } = {}) {
+    const eff = muted ? Math.min(level, LEVEL.PREPARE) : level;
+    if (eff === this.level) return;
+    this.level = eff; clearInterval(this.timer); this.timer = null;
+    const P = {
+      [LEVEL.PREPARE]:  { every: 0,    fn: () => { this._tone(880, 880, 0.18); setTimeout(() => this._tone(880, 880, 0.18), 300); } },
+      [LEVEL.WARN]:     { every: 4000, fn: () => [0, 350, 700].forEach(d => setTimeout(() => this._tone(1000, 1000, 0.22), d)) },
+      [LEVEL.CRITICAL]: { every: 1200, fn: () => { this._tone(700, 1400, 0.55); setTimeout(() => this._tone(1400, 700, 0.55), 600); } },
+    }[eff];
+    if (!P) return;
+    P.fn(); if (P.every) this.timer = setInterval(P.fn, P.every);
+  }
+}
+
+/** Distinct cadences: PREPARE = one soft nudge, WARN = triple pulse /5 s, CRITICAL = long-short continuous. */
+export class HapticManager {
+  constructor(nav = globalThis.navigator) { this.nav = nav; this.level = LEVEL.NONE; this.timer = null; }
+  get supported() { return typeof this.nav?.vibrate === 'function'; } // iOS Safari: false
+  set(level) {
+    if (!this.supported || level === this.level) return;
+    this.level = level; clearInterval(this.timer); this.nav.vibrate(0);
+    const P = { [LEVEL.PREPARE]: [[250], 0], [LEVEL.WARN]: [[300, 150, 300, 150, 300], 5000], [LEVEL.CRITICAL]: [[900, 120, 200, 120], 1400] }[level];
+    if (!P) return;
+    this.nav.vibrate(P[0]); if (P[1]) this.timer = setInterval(() => this.nav.vibrate(P[0]), P[1]);
+  }
+}
+
+export class Notifier {
+  constructor() { this.lastKey = null; this.lastLevel = 0; }
+  async notify(r, msg) {
+    if (globalThis.Notification?.permission !== 'granted') return;
+    const escalated = r.key !== this.lastKey || r.level > this.lastLevel;
+    this.lastKey = r.key; this.lastLevel = r.level;
+    if (!escalated) return;
+    const reg = await globalThis.navigator?.serviceWorker?.getRegistration?.();
+    const opts = { body: msg.en, tag: 'railraksha-threat', renotify: true, requireInteraction: r.level >= LEVEL.CRITICAL,
+      vibrate: r.level >= LEVEL.CRITICAL ? [900, 120, 200] : [300, 150, 300], silent: false };
+    const title = `${LEVEL_NAME[r.level]} · ${r.no} · ${r.line === 'UP' ? 'UP (BZA)' : 'DOWN (GDR)'}`;
+    reg ? reg.showNotification(title, opts) : new Notification(title, opts);
+  }
+}
+
+/**
+ * Orchestrator: turns engine output into exactly one siren pattern, one
+ * haptic pattern, one voice stream and one notification slot.
+ */
+export class AlertOrchestrator {
+  constructor({ voice, siren, haptics, notifier, now = () => Date.now() }) {
+    Object.assign(this, { voice, siren, haptics, notifier, now });
+    this.lastSpoken = new Map(); // `${key}:${level}` → ms
+    this.primaryKey = null; this.primaryLevel = LEVEL.NONE;
+    this.ack = null; // { key, level, until }
+    this.REPEAT_MS = { [LEVEL.CRITICAL]: 20000, [LEVEL.WARN]: 60000, [LEVEL.PREPARE]: Infinity };
+  }
+  acknowledge() {
+    if (!this.primaryKey) return;
+    const holdMs = this.primaryLevel >= LEVEL.CRITICAL ? 20000 : 45000;
+    this.ack = { key: this.primaryKey, level: this.primaryLevel, until: this.now() + holdMs };
+  }
+  process(result) {
+    const now = this.now();
+    const p = result.primary;
+    // events first (one-shots)
+    for (const e of result.events) {
+      if (e.type === 'ADJACENT') this.voice.speak({ priority: LEVEL.PREPARE, ...buildMessage('ADJACENT', e.ts), key: `${e.ts.key}:ADJ` });
+      if (e.type === 'CLEARED' && (!p || p.level < LEVEL.WARN)) this.voice.speak({ priority: LEVEL.AMBIENT, ...buildMessage('CLEARED', e.ts), key: `${e.ts.key}:CLR` });
+    }
+    if (!p) { this.siren.set(LEVEL.NONE); this.haptics.set(LEVEL.NONE); this.primaryKey = null; this.primaryLevel = LEVEL.NONE; return; }
+
+    const escalated = p.key !== this.primaryKey || p.level > this.primaryLevel;
+    if (escalated || (this.ack && now > this.ack.until)) this.ack = null; // escalation always voids an ACK
+    this.primaryKey = p.key; this.primaryLevel = p.level;
+    const acked = !!this.ack && this.ack.key === p.key && this.ack.level >= p.level;
+
+    this.siren.set(p.level, { muted: acked });
+    this.haptics.set(acked ? Math.min(p.level, LEVEL.PREPARE) : p.level);
+
+    const k = `${p.key}:${p.level}`;
+    const last = this.lastSpoken.get(k) ?? 0;
+    const repeat = this.REPEAT_MS[p.level] ?? Infinity;
+    const voiceAllowed = !acked || p.level >= LEVEL.CRITICAL; // CRITICAL voice can't be acked away
+    if (voiceAllowed && (escalated || now - last >= repeat)) {
+      const extra = result.threats.filter(t => t.key !== p.key && t.level >= LEVEL.WARN).length;
+      const msg = buildMessage(LEVEL_NAME[p.level], p, extra);
+      this.voice.speak({ priority: p.level, ...msg, key: k });
+      this.lastSpoken.set(k, now);
+      if (escalated) this.notifier?.notify(p, msg);
     }
   }
-
-  // Notify UI of nearest APPROACHING train
-  if (onDistanceUpdate) {
-    onDistanceUpdate(nearestTrain
-      ? { train: nearestTrain, distKm: nearestDistKm }
-      : null);
-  }
-}
-
-// ── Alert Escalation ──────────────────────────────────────────────────────────
-
-const LEVEL_RANK = { OK: 0, PREPARE: 1, WARN: 2, CRITICAL: 3 };
-
-function escalateAlert(trainNo, level, train, source, detail) {
-  const lastRank = LEVEL_RANK[alertedTrains[trainNo] || "OK"];
-  const thisRank = LEVEL_RANK[level];
-  if (thisRank <= lastRank) return; // Don't repeat or downgrade
-
-  alertedTrains[trainNo] = level;
-  fireAlert(train, level, source, detail);
-  logAlert(trainNo, train.name, train.minutesUntil, level);
-}
-
-function fireAlert(train, level, source, detail) {
-  playAlertTone(level);
-  speakAlert(level, train.name, source);
-  vibrateAlert(level);
-  pushNotification(train, level, source);
-  window.dispatchEvent(new CustomEvent("trainAlert", { detail: { train, level, source } }));
-}
-
-// ── Audio Engine ──────────────────────────────────────────────────────────────
-
-let audioCtx = null;
-function getAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume();
-  return audioCtx;
-}
-
-export function playAlertTone(level) {
-  const ctx = getAudio();
-  const configs = {
-    PREPARE:  [{ f: 440, d: 0.5 }, { f: 550, d: 0.5 }],
-    WARN:     [{ f: 660, d: 0.3 }, { f: 440, d: 0.3 }, { f: 660, d: 0.3 }, { f: 440, d: 0.3 }],
-    CRITICAL: [{ f: 900, d: 0.2 }, { f: 440, d: 0.15 }, { f: 900, d: 0.2 }, { f: 440, d: 0.15 },
-               { f: 900, d: 0.2 }, { f: 440, d: 0.15 }, { f: 1100, d: 0.5 }]
-  };
-  const tones = configs[level] || configs.PREPARE;
-  let time = ctx.currentTime;
-  tones.forEach(({ f, d }) => {
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(f, time);
-    gain.gain.setValueAtTime(level === "CRITICAL" ? 0.5 : 0.3, time);
-    gain.gain.exponentialRampToValueAtTime(0.01, time + d);
-    osc.start(time); osc.stop(time + d);
-    time += d + 0.05;
-  });
-}
-
-function speakAlert(level, trainName, source) {
-  const msgs = {
-    PREPARE:  `హెచ్చరిక! ${trainName} దగ్గరకు వస్తోంది. పని ఆపండి.`,
-    WARN:     `జాగ్రత్త! ${trainName} 8 కిలోమీటర్లలో ఉంది. పరికరాలు పట్టాల నుండి తీయండి.`,
-    CRITICAL: `అత్యవసరం! రైలు 4 కిలోమీటర్లలో ఉంది! అందరూ పట్టాలు వదలండి!`
-  };
-  if (!("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(msgs[level]);
-  u.lang = "te-IN"; u.rate = level === "CRITICAL" ? 1.4 : 1.0; u.volume = 1;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(u);
-}
-
-function vibrateAlert(level) {
-  if (!navigator.vibrate) return;
-  const patterns = {
-    PREPARE:  [300, 150, 300],
-    WARN:     [400, 150, 400, 150, 400],
-    CRITICAL: [600, 200, 600, 200, 1000, 200, 600, 200, 600]
-  };
-  navigator.vibrate(patterns[level] || [300]);
-}
-
-function pushNotification(train, level, source) {
-  if (Notification.permission !== "granted") return;
-  const msgs = {
-    PREPARE:  { title: `${train.name} — Approaching (${source})`,          body: `Train is within 15 km. Prepare to clear the track.` },
-    WARN:     { title: `${train.name} — 8 km away!`,                       body: `${source === "live" ? "Live GPS:" : "Schedule:"} Move all tools off track NOW.` },
-    CRITICAL: { title: `CLEAR TRACK! ${train.name} — ${source === "live" ? "4 km" : "< 7 min"}!`, body: `ALL WORKERS OFF THE TRACK IMMEDIATELY!` }
-  };
-  const msg = msgs[level];
-  if (msg) {
-    new Notification(msg.title, { body: msg.body, icon: "icons/icon-192.png",
-      tag: `train-${train.no}`, requireInteraction: level === "CRITICAL" });
-  }
-}
-
-// ── Exports for UI ────────────────────────────────────────────────────────────
-
-export async function requestNotificationPermission() {
-  if ("Notification" in window && Notification.permission === "default") {
-    await Notification.requestPermission();
-  }
-}
-
-export function getLivePosition(trainNo) {
-  return livePositions.get(trainNo) || null;
-}
-
-export function getLivePositionsMap() {
-  return livePositions;
 }

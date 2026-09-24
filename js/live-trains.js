@@ -1,331 +1,221 @@
 /**
- * RailRaksha — Live Train Position Engine (live-trains.js)
+ * live-trains.js — Live running status → position ENVELOPE per train.
  *
- * Key capabilities:
- *  1. Fetch live running status from RailRadar (FREE — railradar.in/login)
- *  2. Interpolate current train position between known stations
- *  3. Convert km position → GPS coordinates (linear interpolation along track)
- *  4. Calculate Haversine distance: gang mate's GPS ↔ train position
- *  5. Direction-aware alerting: ONLY alert when train is APPROACHING, not receding
- *  6. Configurable alert distances (user-adjustable via Settings)
+ * FLAW 4 (the delay bug) — root cause & fix
+ *   OLD:  baseTime = departureTime − delay      ← moves departure EARLIER
+ *         elapsed  = now − baseTime              ← inflated by +delay
+ *         → a 30-min-late train was placed 30·v/60 ≈ 55 km too far ahead.
+ *   NEW:  depActual = actualDeparture ?? (scheduledDeparture + delay)
+ *         elapsed   = max(0, now − depActual)
+ *   And NEVER apply delay to a timestamp that is already "actual" (double count).
  *
- * Alert levels (GPS-based, configurable):
- *   PREPARE  → default 15 km — heads up, train is approaching
- *   WARN     → default 8 km  — move tools off track
- *   CRITICAL → default 4 km  — ALL WORKERS CLEAR THE TRACK NOW
+ * POSITION ENVELOPE (all in chainage km, dir = +1 UP / −1 DN)
+ *   kmNominal : best estimate
+ *   kmLead    : furthest the train could plausibly be  → used for APPROACH alarms
+ *   kmLag     : least  the train could plausibly be    → used to declare PASSED
+ *   Using lead for approach and lag for "passed" is fail-safe in both directions.
+ *
+ *   LIVE mode (fresh report from last station L, next booked point N):
+ *     f        = clamp( (now − depActual_L) / (arrActual_N − depActual_L), 0, 1 )
+ *     nominal  = km_L + f·(km_N − km_L)
+ *     lead     = km_L + dir·min(|km_N − km_L|, v_max·elapsed)   (≥ nominal)
+ *     lag      = nominal − dir·(0.3 km + 0.5 km/min · dataAge)   (not behind L)
+ *     beyond N with no new report → continue on schedule shifted by δ, lead
+ *     assumes up to 5 min recovery, lag assumes up to 10 min further loss.
+ *
+ *   SCHEDULE mode (no/stale live data), δ₀ = last known delay or 0:
+ *     nominal = s(now − δ₀),  lead = s(now − δ₀ + 5 min),  lag = s(now − δ₀ − 120 min)
+ *     → flagged UNCONFIRMED; the alert engine caps these at WARN.
  */
+import { STATION_BY_CODE } from './corridor.js';
+import { candidateRuns, positionAtTime, nextPointAhead, pointByCode, dirSign, timeAtKm } from './timetable-data.js';
 
-// ── Section Station Map (Vijayawada–Chennai mainline) ────────────────────────
-// kmFromMAS = distance from Chennai Central (km 0)
-export const SECTION_STATIONS = {
-  "BZA":  { name: "Vijayawada",      lat: 16.5193, lon: 80.6305, kmFromMAS: 432 },
-  "TEL":  { name: "Tenali",          lat: 16.2426, lon: 80.6411, kmFromMAS: 411 },
-  "BPP":  { name: "Bapatla",         lat: 15.9066, lon: 80.4672, kmFromMAS: 373 },
-  "CL":   { name: "Chirala",         lat: 15.8268, lon: 80.3557, kmFromMAS: 354 },
-  "ANB":  { name: "Ammanabrolu",     lat: 15.6000, lon: 80.1200, kmFromMAS: 338 },
-  "OGL":  { name: "Ongole",          lat: 15.5044, lon: 80.0497, kmFromMAS: 323 },
-  "TGU":  { name: "Tanguturu",       lat: 15.3600, lon: 80.0240, kmFromMAS: 308 },
-  "SKM":  { name: "Singarayakonda",  lat: 15.2333, lon: 80.0167, kmFromMAS: 293 },
-  "INGR": { name: "Inagallu",        lat: 15.1100, lon: 80.0120, kmFromMAS: 278 },
-  "UPD":  { name: "Ulavapadu",       lat: 15.0140, lon: 80.0090, kmFromMAS: 265 },
-  "KVZ":  { name: "Kavali",          lat: 14.9152, lon: 80.0067, kmFromMAS: 247 },
-  "BVRT": { name: "Bitragunta",      lat: 14.7500, lon: 80.0010, kmFromMAS: 238 },
-  "NLR":  { name: "Nellore",         lat: 14.4426, lon: 79.9866, kmFromMAS: 214 },
-  "GDR":  { name: "Gudur",           lat: 14.1480, lon: 79.8530, kmFromMAS: 185 },
-  "MAS":  { name: "Chennai Central", lat: 13.0827, lon: 80.2707, kmFromMAS:   0 },
+const CFG = {
+  pollIntervalS: 30,          // per train, while relevant
+  requestTimeoutMs: 8000,
+  maxBackoffS: 300,
+  liveFreshMaxAgeS: 15 * 60,  // older reports are treated as schedule-only
+  unknownDelayWindowMin: 120,
+  earlyRunningMin: 5,
+  maxConcurrent: 4,
 };
 
-// Sorted by km (ascending, Chennai→Vijayawada)
-export const SORTED_STATIONS = Object.values(SECTION_STATIONS)
-  .sort((a, b) => a.kmFromMAS - b.kmFromMAS);
-
-// ── Dynamic Alert Thresholds ───────────────────────────────────────────────────
+/* ------------------------------------------------------------------ *
+ * Provider adapter. Map whatever your upstream returns into this shape.
+ * ------------------------------------------------------------------ */
 /**
- * Read distance thresholds from user config at runtime.
- * User can change these in ⚙️ Settings without reloading.
+ * @typedef {Object} LiveStatus
+ * @property {string}  trainNo
+ * @property {string}  lastStationCode   last station departed/passed (or arrived)
+ * @property {'DEPARTED'|'ARRIVED'|'PASSED'} event
+ * @property {number|null} actualEventMs actual time of that event, epoch ms
+ * @property {number}  delayMin          + late / − early
+ * @property {number|null} speedKmh      if the provider has it (GPS-based feeds)
+ * @property {number}  reportedAtMs      when the provider generated the record
  */
-export function getDistThresholds() {
-  const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
-  return {
-    CRITICAL: parseFloat(cfg("alert_dist_critical")) || 4,
-    WARN:     parseFloat(cfg("alert_dist_warn"))     || 8,
-    PREPARE:  parseFloat(cfg("alert_dist_prepare"))  || 15,
+export function normalizeLiveStatus(raw, trainNo, nowMs) {
+  if (!raw || typeof raw !== 'object') return null;
+  const code = String(raw.last_station_code ?? raw.lastStation ?? raw.current_station ?? '').toUpperCase();
+  const delayMin = Number(raw.delay_min ?? raw.delay ?? raw.late_mins);
+  const actual = raw.actual_departure ?? raw.actual_time ?? raw.actualDeparture ?? null;
+  const reported = raw.updated_at ?? raw.reported_at ?? raw.timestamp ?? null;
+  const out = {
+    trainNo,
+    lastStationCode: code,
+    event: (raw.event ?? (raw.has_departed === false ? 'ARRIVED' : 'DEPARTED')).toUpperCase(),
+    actualEventMs: actual ? Date.parse(actual) : null,
+    delayMin: Number.isFinite(delayMin) ? delayMin : NaN,
+    speedKmh: Number.isFinite(Number(raw.speed_kmh)) ? Number(raw.speed_kmh) : null,
+    reportedAtMs: reported ? Date.parse(reported) : nowMs,
   };
+  // Validation — reject garbage instead of trusting it
+  if (!STATION_BY_CODE[out.lastStationCode] && !raw.allow_off_corridor) return null;
+  if (!Number.isFinite(out.delayMin) || out.delayMin < -30 || out.delayMin > 1440) return null;
+  if (out.reportedAtMs > nowMs + 5 * 60000) return null;                // clock skew / bad data
+  if (out.actualEventMs && out.actualEventMs > nowMs + 2 * 60000) return null;
+  if (out.speedKmh != null && (out.speedKmh < 0 || out.speedKmh > 160)) out.speedKmh = null;
+  return out;
 }
 
-// Keep DIST_THRESHOLDS as an alias for backward compatibility
-export const DIST_THRESHOLDS = {
-  get CRITICAL() { return getDistThresholds().CRITICAL; },
-  get WARN()     { return getDistThresholds().WARN;     },
-  get PREPARE()  { return getDistThresholds().PREPARE;  },
-};
+/* ------------------------------------------------------------------ *
+ * Pure position estimator (unit-tested)
+ * ------------------------------------------------------------------ */
+export function estimatePosition(run, live, nowMs, lastKnownDelayMin = null) {
+  const { train, runStartMs } = run;
+  const dir = dirSign(train);
+  const vmaxKmPerMs = train.vmaxKmh / 3600000;
+  const base = { key: run.key, no: train.no, name: train.name, te: train.te, dir: train.dir, line: live?.wrongLine ? 'BOTH' : train.dir,
+    vmaxKmh: train.vmaxKmh, lengthKm: train.lengthKm };
 
-// ── Haversine Distance ────────────────────────────────────────────────────────
-export function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2
-          + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-function toRad(deg) { return deg * Math.PI / 180; }
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  const dataAgeS = live ? (nowMs - live.reportedAtMs) / 1000 : Infinity;
+  const anchor = live && pointByCode(train, runStartMs, live.lastStationCode);
+  const anchorKm = live && STATION_BY_CODE[live.lastStationCode]?.km;
 
-// ── GPS → km from MAS (inverse mapping) ──────────────────────────────────────
-/**
- * Convert a GPS coordinate to the approximate km position along the
- * Vijayawada–Chennai track (measured from Chennai Central = km 0).
- * Used to determine if a train is approaching or has passed the worker.
- */
-export function gpsToKmFromMAS(lat, lon) {
-  let bestKm = 293; // Default to SKM
-  let minDist = Infinity;
+  if (live && dataAgeS <= CFG.liveFreshMaxAgeS && anchorKm != null) {
+    const delayMs = live.delayMin * 60000;
+    // Scheduled departure at the anchor: booked halt, or interpolated pass time
+    const schedDepMs = anchor ? anchor.depMs : timeAtKm(train, runStartMs, anchorKm);
+    // ✅ FIX: add the delay (or use the actual timestamp as-is)
+    let depActualMs = live.actualEventMs ?? (schedDepMs != null ? schedDepMs + delayMs : live.reportedAtMs);
+    if (live.event === 'ARRIVED') depActualMs = Math.max(nowMs, depActualMs); // still standing at L
 
-  for (let i = 0; i < SORTED_STATIONS.length - 1; i++) {
-    const s1 = SORTED_STATIONS[i];
-    const s2 = SORTED_STATIONS[i + 1];
-    const dx = s2.lat - s1.lat, dy = s2.lon - s1.lon;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) continue;
+    const next = nextPointAhead(train, runStartMs, anchorKm);
+    const elapsedMs = Math.max(0, nowMs - depActualMs);
+    let nominal, lead, lag, phase;
 
-    // Project (lat,lon) onto segment s1→s2
-    const t = clamp(((lat - s1.lat) * dx + (lon - s1.lon) * dy) / lenSq, 0, 1);
-    const projLat = s1.lat + t * dx;
-    const projLon = s1.lon + t * dy;
-    const dist = haversineKm(lat, lon, projLat, projLon);
-
-    if (dist < minDist) {
-      minDist = dist;
-      bestKm = s1.kmFromMAS + t * (s2.kmFromMAS - s1.kmFromMAS);
+    if (!next) {
+      nominal = anchorKm + dir * elapsedMs * vmaxKmPerMs * 0.8;  // beyond last booked point
+      lead = anchorKm + dir * elapsedMs * vmaxKmPerMs; phase = 'AFTER';
+    } else {
+      const arrNextActualMs = next.arrMs + delayMs;
+      const span = Math.abs(next.km - anchorKm);
+      if (nowMs <= arrNextActualMs) {
+        const denom = Math.max(60000, arrNextActualMs - depActualMs);
+        const f = Math.min(1, Math.max(0, elapsedMs / denom));
+        nominal = anchorKm + dir * f * span;
+        lead = anchorKm + dir * Math.min(span, elapsedMs * vmaxKmPerMs);
+        phase = live.event === 'ARRIVED' ? 'HALT' : 'RUNNING';
+      } else {
+        // Overdue at N and no fresh report: schedule shifted by δ, bounded recovery
+        const pN = positionAtTime(train, runStartMs, nowMs - delayMs);
+        const pL = positionAtTime(train, runStartMs, nowMs - delayMs + CFG.earlyRunningMin * 60000);
+        nominal = pN?.km ?? next.km; lead = pL?.km ?? nominal; phase = pN?.phase ?? 'AFTER';
+      }
     }
-  }
-  return bestKm;
-}
+    lead = dir > 0 ? Math.max(lead, nominal) : Math.min(lead, nominal);
+    lag = nominal - dir * (0.3 + 0.5 * (dataAgeS / 60));
+    lag = dir > 0 ? Math.max(lag, anchorKm) : Math.min(lag, anchorKm);   // never behind confirmed L
 
-// ── km → GPS interpolation ────────────────────────────────────────────────────
-export function kmToLatLon(kmFromMAS) {
-  if (kmFromMAS <= 0)   return { lat: SECTION_STATIONS.MAS.lat, lon: SECTION_STATIONS.MAS.lon };
-  if (kmFromMAS >= 432) return { lat: SECTION_STATIONS.BZA.lat, lon: SECTION_STATIONS.BZA.lon };
-
-  let lower = SORTED_STATIONS[0];
-  let upper = SORTED_STATIONS[SORTED_STATIONS.length - 1];
-  for (let i = 0; i < SORTED_STATIONS.length - 1; i++) {
-    if (SORTED_STATIONS[i].kmFromMAS <= kmFromMAS && SORTED_STATIONS[i+1].kmFromMAS >= kmFromMAS) {
-      lower = SORTED_STATIONS[i];
-      upper = SORTED_STATIONS[i + 1];
-      break;
-    }
-  }
-  const t = (kmFromMAS - lower.kmFromMAS) / (upper.kmFromMAS - lower.kmFromMAS);
-  return {
-    lat: lower.lat + t * (upper.lat - lower.lat),
-    lon: lower.lon + t * (upper.lon - lower.lon),
-  };
-}
-
-// ── Interpolate Train Position ────────────────────────────────────────────────
-export function interpolateTrainPosition(lastStationCode, departureTime, speedKmh, direction, delayMinutes = 0) {
-  const station = SECTION_STATIONS[lastStationCode];
-  if (!station) return direction === "D" ? 600 : -100;
-
-  const now = new Date();
-  const baseTime = departureTime ? new Date(departureTime) : new Date();
-  baseTime.setMinutes(baseTime.getMinutes() - delayMinutes);
-
-  const elapsedMin = Math.max(0, (now - baseTime) / 60000);
-  const kmTraveled = elapsedMin * speedKmh / 60;
-
-  // DOWN = towards Chennai (km from MAS decreases)
-  // UP   = towards Vijayawada (km from MAS increases)
-  return direction === "D"
-    ? station.kmFromMAS - kmTraveled
-    : station.kmFromMAS + kmTraveled;
-}
-
-// ── Distance: Train → Worker ──────────────────────────────────────────────────
-export function distanceToWorker(trainKmFromMAS, workerLat, workerLon) {
-  const { lat, lon } = kmToLatLon(trainKmFromMAS);
-  return haversineKm(workerLat, workerLon, lat, lon);
-}
-
-// ── Direction-Aware: Is Train APPROACHING the worker? ─────────────────────────
-/**
- * Returns true only when the train is moving TOWARDS the worker's position.
- * A train that has already passed and is receding should NOT trigger alerts.
- *
- * @param {number} trainKmFromMAS  - train's current km from MAS
- * @param {number} workerKmFromMAS - worker's km from MAS (derived from GPS or 293 for SKM)
- * @param {"D"|"U"} direction      - "D" = towards Chennai, "U" = towards Vijayawada
- */
-export function isTrainApproaching(trainKmFromMAS, workerKmFromMAS, direction) {
-  if (direction === "D") {
-    // DOWN train moves from high km → low km (towards Chennai/MAS)
-    // It's approaching if it's still NORTH of the worker (higher km than worker)
-    return trainKmFromMAS > workerKmFromMAS;
-  } else {
-    // UP train moves from low km → high km (towards Vijayawada/BZA)
-    // It's approaching if it's still SOUTH of the worker (lower km than worker)
-    return trainKmFromMAS < workerKmFromMAS;
-  }
-}
-
-// ── Alert Level by Distance ───────────────────────────────────────────────────
-export function getDistanceAlertLevel(km) {
-  const t = getDistThresholds();
-  if (km <= t.CRITICAL) return "CRITICAL";
-  if (km <= t.WARN)     return "WARN";
-  if (km <= t.PREPARE)  return "PREPARE";
-  return "OK";
-}
-
-// ── RailRadar API (FREE — https://railradar.in/login) ─────────────────────────
-const RAILRADAR_BASE = "https://api.railradar.in";
-
-export async function fetchLiveTrainStatus(trainNo, apiKey) {
-  if (!apiKey) return null;
-  try {
-    const resp = await fetch(`${RAILRADAR_BASE}/v2/trains/${trainNo}/status`, {
-      headers: { "Authorization": `Bearer ${apiKey}`, "Accept": "application/json" },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const body = data?.data || data;
-
-    const lat = body?.lat || body?.latitude || null;
-    const lon = body?.lon || body?.longitude || null;
-
-    const stations = body?.stations || body?.stationList || [];
-    let lastPassed = null;
-    for (const st of stations) {
-      const actualDep = st.actualDepartureTime || st.actDep || st.actualDep || st.departedAt;
-      if (actualDep && actualDep !== "--" && actualDep !== "00:00") lastPassed = st;
-    }
-
-    if (!lastPassed) {
-      const cur = body?.currentStation || body?.lastStation;
-      if (cur) lastPassed = { stationCode: cur.code || cur.stationCode || cur, actualDepartureTime: cur.departureTime || null };
-    }
-    if (!lastPassed) return null;
-
-    const stCode = (lastPassed.stationCode || lastPassed.stnCode || lastPassed.code || "").toUpperCase();
-    const depTimeStr = lastPassed.actualDepartureTime || lastPassed.actDep || lastPassed.departedAt || "";
-    const delay = parseInt(body?.delay || body?.delayInMinutes || lastPassed.delay || "0") || 0;
-
-    return { lastStation: stCode, departureTime: parseHHMM(depTimeStr), delayMinutes: delay, lat, lon };
-  } catch (err) {
-    console.warn(`[LiveTrains] RailRadar fetch failed for ${trainNo}:`, err.message);
-    return null;
-  }
-}
-
-export async function fetchStationLiveBoard(stationCode, apiKey) {
-  if (!apiKey) return fetchNTESStationBoard(stationCode);
-  try {
-    const resp = await fetch(`${RAILRADAR_BASE}/v2/stations/${stationCode}/board`, {
-      headers: { "Authorization": `Bearer ${apiKey}`, "Accept": "application/json" },
-      signal: AbortSignal.timeout(6000)
-    });
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch { return fetchNTESStationBoard(stationCode); }
-}
-
-async function fetchNTESStationBoard(stationCode) {
-  try {
-    const url = `https://enquiry.indianrail.gov.in/ntes/json/stationRunningStatus?station=${stationCode}`;
-    const resp = await fetch("https://corsproxy.io/?url=" + encodeURIComponent(url), { signal: AbortSignal.timeout(6000) });
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch { return null; }
-}
-
-// ── Position Cache (90 second TTL) ───────────────────────────────────────────
-const positionCache = new Map();
-export function getCachedPosition(trainNo) {
-  const c = positionCache.get(trainNo);
-  if (!c) return null;
-  if (Date.now() - c.timestamp > 90000) { positionCache.delete(trainNo); return null; }
-  return c;
-}
-export function setCachedPosition(trainNo, position, distanceKm) {
-  positionCache.set(trainNo, { position, distanceKm, timestamp: Date.now() });
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function parseHHMM(timeStr) {
-  if (!timeStr) return null;
-  const m = timeStr.match(/(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const result = new Date();
-  result.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0);
-  if (result > new Date() && (result - new Date()) > 12 * 3600000) result.setDate(result.getDate() - 1);
-  return result;
-}
-
-export function formatDistanceAlert(km, trainName, direction) {
-  const dir = direction === "D" ? "↓ towards Chennai" : "↑ towards Vijayawada";
-  return `${trainName} — ${km.toFixed(1)} km away ${dir}`;
-}
-
-// ── Station-Based Alert: Estimate which station a train is near ────────────
-/**
- * Given a train's scheduled time at SKM and its speed, estimate
- * which station the train is currently near.
- * Returns { stationCode, stationName, kmFromStation, minutesToWorkSection }
- */
-export function estimateTrainStation(train) {
-  const skmKm = SECTION_STATIONS.SKM.kmFromMAS; // 293
-  const updKm = SECTION_STATIONS.UPD?.kmFromMAS || 265;
-  const minUntilSKM = train.minutesUntil;
-  const speed = train.speed || 80; // km/h
-
-  // How far is the train from SKM right now (in km)?
-  const kmFromSKM = Math.abs(minUntilSKM) * speed / 60;
-
-  // Estimate the train's current km-from-MAS position
-  let trainKm;
-  if (train.dir === "D") {
-    // DOWN train (BZA → GDR direction): approaching from high km (north)
-    // If minUntilSKM > 0, train hasn't reached SKM yet, so it's NORTH of SKM
-    trainKm = minUntilSKM > 0 ? skmKm + kmFromSKM : skmKm - kmFromSKM;
-  } else {
-    // UP train (GDR → BZA direction): approaching from low km (south)
-    // If minUntilSKM > 0, train hasn't reached SKM yet, so it's SOUTH of SKM
-    trainKm = minUntilSKM > 0 ? skmKm - kmFromSKM : skmKm + kmFromSKM;
+    const bookedH = next && schedDepMs != null ? (next.arrMs - schedDepMs) / 3600000 : 0;
+    const secKmh = bookedH > 0 ? Math.abs(next.km - anchorKm) / bookedH : train.vmaxKmh * 0.8;
+    return { ...base, source: 'LIVE', confirmed: true, dataAgeS, delayMin: live.delayMin, phase,
+      kmNominal: nominal, kmLead: lead, kmLag: lag, speedKmh: live.speedKmh ?? Math.min(train.vmaxKmh, secKmh) };
   }
 
-  // Find the nearest station to this km position
-  let nearestStation = SORTED_STATIONS[0];
-  let nearestDist = Infinity;
-  for (const st of SORTED_STATIONS) {
-    const d = Math.abs(st.kmFromMAS - trainKm);
-    if (d < nearestDist) {
-      nearestDist = d;
-      nearestStation = st;
+  // ---------- SCHEDULE fallback ----------
+  const d0 = (lastKnownDelayMin ?? 0) * 60000;
+  const pNom = positionAtTime(train, runStartMs, nowMs - d0);
+  const pLead = positionAtTime(train, runStartMs, nowMs - d0 + CFG.earlyRunningMin * 60000);
+  const pLag = positionAtTime(train, runStartMs, nowMs - d0 - CFG.unknownDelayWindowMin * 60000, CFG.unknownDelayWindowMin + 60);
+  if (!pNom && !pLead) return null;
+  const nominal = pNom?.km ?? pLead.km;
+  return { ...base, source: 'SCHEDULE', confirmed: false, dataAgeS, delayMin: lastKnownDelayMin, phase: pNom?.phase ?? 'BEFORE',
+    kmNominal: nominal, kmLead: pLead?.km ?? nominal,
+    // lag unknown → train may not even have started: infinitely "behind"
+    kmLag: pLag?.km ?? (dir > 0 ? -Infinity : Infinity), speedKmh: train.vmaxKmh * 0.75 };
+}
+
+/* ------------------------------------------------------------------ *
+ * Polling service
+ * ------------------------------------------------------------------ */
+export class LiveTrainService extends EventTarget {
+  /**
+   * @param {{fetchLive:(trainNo:string, runDateISO:string, signal:AbortSignal)=>Promise<any>, now?:()=>number}} opts
+   */
+  constructor({ fetchLive, now = () => Date.now() }) {
+    super();
+    this.fetchLive = fetchLive; this.now = now;
+    this.cache = new Map();   // key → { live, fetchedAt, failures, nextDueAt, lastKnownDelay }
+    this.inflight = new Set();
+    this.health = { ok: 0, fail: 0, lastOkAt: null };
+  }
+
+  async poll(workerKm) {
+    if (workerKm == null) return;
+    const now = this.now();
+    const runs = candidateRuns(workerKm, now);
+    const due = runs.filter(r => !this.inflight.has(r.key) && (this.cache.get(r.key)?.nextDueAt ?? 0) <= now)
+      // nearest scheduled pass first
+      .sort((a, b) => Math.abs(a.schedPassMs - now) - Math.abs(b.schedPassMs - now))
+      .slice(0, CFG.maxConcurrent);
+    await Promise.allSettled(due.map(r => this._fetchOne(r)));
+  }
+
+  async _fetchOne(run) {
+    const entry = this.cache.get(run.key) ?? { live: null, fetchedAt: 0, failures: 0, nextDueAt: 0, lastKnownDelay: null };
+    this.inflight.add(run.key);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), CFG.requestTimeoutMs);
+    try {
+      const runDateISO = run.key.split('@')[1];
+      const raw = await this.fetchLive(run.train.no, runDateISO, ctl.signal);
+      const live = normalizeLiveStatus(raw, run.train.no, this.now());
+      if (!live) throw new Error('invalid payload');
+      // monotonic guard: ignore a report older than what we already hold
+      if (!entry.live || live.reportedAtMs >= entry.live.reportedAtMs) entry.live = live;
+      entry.lastKnownDelay = entry.live.delayMin;
+      entry.failures = 0; entry.fetchedAt = this.now();
+      entry.nextDueAt = this.now() + CFG.pollIntervalS * 1000;
+      this.health.ok++; this.health.lastOkAt = this.now();
+    } catch (err) {
+      entry.failures++;
+      const backoffS = Math.min(CFG.maxBackoffS, CFG.pollIntervalS * 2 ** (entry.failures - 1)) * (0.8 + Math.random() * 0.4);
+      entry.nextDueAt = this.now() + backoffS * 1000;
+      this.health.fail++;
+      this.dispatchEvent(new CustomEvent('error', { detail: { key: run.key, err: String(err) } }));
+    } finally {
+      clearTimeout(timer); this.inflight.delete(run.key); this.cache.set(run.key, entry);
     }
   }
 
-  // Calculate minutes until train enters the work section (SKM ↔ UPD)
-  let minutesToWorkSection;
-  if (train.dir === "D") {
-    // DOWN train enters work section at SKM (it's the north boundary)
-    minutesToWorkSection = minUntilSKM;
-  } else {
-    // UP train enters work section at UPD (south boundary)
-    // UPD is (skmKm - updKm) = 28 km south of SKM
-    // Time from UPD to SKM at train speed = distance / speed * 60
-    const updToSkmMinutes = Math.abs(skmKm - updKm) / speed * 60;
-    minutesToWorkSection = minUntilSKM - updToSkmMinutes;
+  /** Position envelopes for every candidate run. Never throws. */
+  getTrainStates(workerKm) {
+    if (workerKm == null) return [];
+    const now = this.now();
+    const out = [];
+    for (const run of candidateRuns(workerKm, now)) {
+      try {
+        const e = this.cache.get(run.key);
+        const st = estimatePosition(run, e?.live ?? null, now, e?.lastKnownDelay ?? null);
+        if (st) out.push(st);
+      } catch (err) { console.error('estimatePosition', run.key, err); }
+    }
+    return out;
   }
 
-  return {
-    stationCode: nearestStation.name,
-    stationName: nearestStation.name,
-    kmFromStation: Math.round(nearestDist),
-    trainKm: Math.round(trainKm),
-    minutesToWorkSection: Math.round(minutesToWorkSection)
-  };
+  feedStatus() {
+    const now = this.now();
+    const age = this.health.lastOkAt ? (now - this.health.lastOkAt) / 1000 : Infinity;
+    return { state: age < 90 ? 'LIVE' : age < 600 ? 'STALE' : 'OFFLINE', ageS: age };
+  }
 }
-

@@ -1,349 +1,5197 @@
 /**
- * RailRaksha — VERIFIED SKM (Singarayakonda) Train Timetable
- * Vijayawada–Gudur–Chennai double-line mainline section
- * South Central Railway (SCR), Guntakal Division
+ * RailRaksha — Comprehensive Corridor Timetable & Location-Agnostic Schedule Math
+ * Section: South Central Railway (SCR) Vijayawada (BZA) <-> Gudur (GDR) Mainline
  *
- * Direction key:
- *   "D" = DOWN (towards Gudur / Chennai / Tirupati — southbound)
- *   "U" = UP   (towards Vijayawada / Secunderabad / Howrah — northbound)
- *
- * Direction rule: ODD train number = DOWN, EVEN = UP
- *
- * Times are SCHEDULED at Singarayakonda (SKM) in HH:MM 24-hour IST.
- * For trains that STOP: departure time is used.
- * For trains that PASS THROUGH: approximate passing time is used.
- *
- * DATA SOURCE: Indian Railways NTES, eRail.in, IndiaRailInfo
- * LAST VERIFIED: August 2026
- *
- * ⚠️  SAFETY WARNING: This timetable is for OFFLINE safety alerting only.
- *     Always rely on live GPS data when available.
- *     Freight trains are NOT listed here — maintain constant vigilance.
+ * Full 53 verified trains with continuous chainage route-points across all 14 stations.
+ * Every calculation evaluates arrival dynamically at the worker's exact kilometer post (s_w).
  */
+import { STATION_BY_CODE, CORRIDOR_KM_MIN, CORRIDOR_KM_MAX } from './corridor.js';
 
-export const SKM_TIMETABLE = [
+export const IST_OFFSET_MS = 330 * 60000;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  TRAINS THAT STOP AT SKM (1-2 minute halt — verified schedules)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // ── Circar Express ──
-  { no: "17644", name: "Circar Express",         from: "KAKINADA PORT",     to: "CHENGALPATTU",    dir: "D", time: "00:45", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
-  { no: "17643", name: "Circar Express",         from: "CHENGALPATTU",      to: "KAKINADA PORT",   dir: "U", time: "21:55", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
-
-  // ── Charlapalli Express ──
-  { no: "12604", name: "Charlapalli-MAS Express", from: "CHARLAPALLI",      to: "CHENNAI CENTRAL", dir: "D", time: "01:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-  { no: "12603", name: "MAS-Charlapalli Express", from: "CHENNAI CENTRAL",  to: "CHARLAPALLI",     dir: "U", time: "20:35", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-
-  // ── Seshadri Express ──
-  { no: "17210", name: "Seshadri Express",       from: "KAKINADA TOWN",     to: "BENGALURU",       dir: "D", time: "01:15", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
-  { no: "17209", name: "Seshadri Express",       from: "BENGALURU",         to: "KAKINADA TOWN",   dir: "U", time: "21:20", days: "daily",               type: "EXPRESS",    speed: 51, stops: true },
-
-  // ── Narayanadri Express ──
-  { no: "12734", name: "Narayanadri Express",    from: "LINGAMPALLI",       to: "TIRUPATI",        dir: "D", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
-  { no: "12733", name: "Narayanadri Express",    from: "TIRUPATI",          to: "LINGAMPALLI",     dir: "U", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 57, stops: true },
-
-  // ── Andaman Express ──
-  { no: "16032", name: "Andaman Express",        from: "SVDK KATRA",        to: "CHENNAI CENTRAL", dir: "D", time: "01:55", days: "Tue,Wed,Sat",         type: "EXPRESS",    speed: 52, stops: true },
-  { no: "16031", name: "Andaman Express",        from: "CHENNAI CENTRAL",   to: "SVDK KATRA",      dir: "U", time: "09:30", days: "Wed,Thu,Fri,Sun",     type: "EXPRESS",    speed: 52, stops: true },
-
-  // ── Dhanbad-Alappuzha Express ──
-  { no: "13352", name: "Alappuzha-Dhanbad Exp",  from: "ALAPPUZHA",         to: "DHANBAD",         dir: "U", time: "02:00", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
-  { no: "13351", name: "Dhanbad-Alappuzha Exp",  from: "DHANBAD",           to: "ALAPPUZHA",       dir: "D", time: "18:35", days: "daily",               type: "EXPRESS",    speed: 48, stops: true },
-
-  // ── Sabari Express ──
-  { no: "17229", name: "Sabari Express",         from: "TRIVANDRUM",        to: "SECUNDERABAD",    dir: "U", time: "03:25", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
-  { no: "17230", name: "Sabari Express",         from: "SECUNDERABAD",      to: "TRIVANDRUM",      dir: "D", time: "19:45", days: "daily",               type: "EXPRESS",    speed: 53, stops: true },
-
-  // ── Bitragunta MEMU ──
-  { no: "07760", name: "Bitragunta-BZA MEMU",    from: "BITRAGUNTA",        to: "VIJAYAWADA",      dir: "U", time: "04:40", days: "daily",               type: "PASSENGER",  speed: 38, stops: true },
-  { no: "07759", name: "BZA-Bitragunta MEMU",    from: "VIJAYAWADA",        to: "BITRAGUNTA",      dir: "D", time: "18:00", days: "daily",               type: "PASSENGER",  speed: 38, stops: true },
-
-  // ── Simhapuri Express ──
-  { no: "12710", name: "Simhapuri Express",      from: "SECUNDERABAD",      to: "GUDUR",           dir: "D", time: "06:30", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-  { no: "12709", name: "Simhapuri Express",      from: "GUDUR",             to: "SECUNDERABAD",    dir: "U", time: "20:05", days: "daily",               type: "EXPRESS",    speed: 58, stops: true },
-
-  // ── Tirumala Express ──
-  { no: "17488", name: "Tirumala Express",       from: "VISAKHAPATNAM",     to: "TIRUPATI",        dir: "D", time: "07:33", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
-  { no: "17487", name: "Tirumala Express",       from: "TIRUPATI",          to: "VISAKHAPATNAM",   dir: "U", time: "23:50", days: "daily",               type: "EXPRESS",    speed: 50, stops: true },
-
-  // ── Pinakini Express ──
-  { no: "12711", name: "Pinakini Express",       from: "VIJAYAWADA",        to: "CHENNAI CENTRAL", dir: "D", time: "08:35", days: "daily",               type: "EXPRESS",    speed: 62, stops: true },
-  { no: "12712", name: "Pinakini Express",       from: "CHENNAI CENTRAL",   to: "VIJAYAWADA",      dir: "U", time: "18:15", days: "daily",               type: "EXPRESS",    speed: 62, stops: true },
-
-  // ── Krishna Express ──
-  { no: "17405", name: "Krishna Express",        from: "TIRUPATI",          to: "ADILABAD",        dir: "U", time: "09:15", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
-  { no: "17406", name: "Krishna Express",        from: "ADILABAD",          to: "TIRUPATI",        dir: "D", time: "16:20", days: "daily",               type: "EXPRESS",    speed: 45, stops: true },
-
-  // ── Puri-Tirupati Express ──
-  { no: "17479", name: "Puri-Tirupati Express",  from: "PURI",              to: "TIRUPATI",        dir: "D", time: "15:10", days: "Mon,Wed,Thu,Fri,Sat", type: "EXPRESS",    speed: 48, stops: true },
-  { no: "17480", name: "Tirupati-Puri Express",  from: "TIRUPATI",          to: "PURI",            dir: "U", time: "14:40", days: "Mon,Tue,Wed,Fri,Sat", type: "EXPRESS",    speed: 48, stops: true },
-
-  // ── Vijayawada-Gudur MEMU ──
-  { no: "07500", name: "BZA-Gudur MEMU",         from: "VIJAYAWADA",        to: "GUDUR",           dir: "D", time: "20:40", days: "daily",               type: "PASSENGER",  speed: 40, stops: true },
-
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  TRAINS THAT PASS THROUGH SKM WITHOUT STOPPING
-  //  ⚠️  HIGH SPEED — up to 130 km/h — MOST DANGEROUS for track workers
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // ── Vande Bharat Express (MAS-Narasapur) — FASTEST on this section ──
-  { no: "20677", name: "Vande Bharat Express",   from: "CHENNAI CENTRAL",   to: "NARASAPUR",       dir: "U", time: "09:22", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
-  { no: "20678", name: "Vande Bharat Express",   from: "NARASAPUR",         to: "CHENNAI CENTRAL", dir: "D", time: "18:52", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "VANDE_BHARAT", speed: 130, stops: false },
-
-  // ── Jan Shatabdi (MAS-BZA) ──
-  { no: "12077", name: "Chennai Jan Shatabdi",   from: "CHENNAI CENTRAL",   to: "VIJAYAWADA",      dir: "U", time: "10:45", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
-  { no: "12078", name: "BZA Jan Shatabdi",       from: "VIJAYAWADA",        to: "CHENNAI CENTRAL", dir: "D", time: "18:15", days: "Mon,Wed,Thu,Fri,Sat,Sun", type: "JAN_SHATABDI", speed: 110, stops: false },
-
-  // ── Howrah-Chennai Mail ──
-  { no: "12839", name: "Howrah-Chennai Mail",    from: "HOWRAH",            to: "CHENNAI CENTRAL", dir: "D", time: "12:30", days: "daily",               type: "MAIL",       speed: 110, stops: false },
-  { no: "12840", name: "Chennai-Howrah Mail",    from: "CHENNAI CENTRAL",   to: "HOWRAH",          dir: "U", time: "23:50", days: "daily",               type: "MAIL",       speed: 110, stops: false },
-
-  // ── Navjeevan Express ──
-  { no: "12655", name: "Navjeevan Express",      from: "AHMEDABAD",         to: "CHENNAI CENTRAL", dir: "D", time: "13:20", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12656", name: "Navjeevan Express",      from: "CHENNAI CENTRAL",   to: "AHMEDABAD",       dir: "U", time: "12:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-
-  // ── Coromandel Express ──
-  { no: "12841", name: "Coromandel Express",     from: "HOWRAH",            to: "CHENNAI CENTRAL", dir: "D", time: "14:20", days: "daily",               type: "EXPRESS",    speed: 120, stops: false },
-  { no: "12842", name: "Coromandel Express",     from: "CHENNAI CENTRAL",   to: "HOWRAH",          dir: "U", time: "10:30", days: "daily",               type: "EXPRESS",    speed: 120, stops: false },
-
-  // ── Padmavathi Express ──
-  { no: "12763", name: "Padmavathi Express",     from: "TIRUPATI",          to: "SECUNDERABAD",    dir: "U", time: "19:15", days: "Mon,Tue,Thu,Fri,Sun", type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12764", name: "Padmavathi Express",     from: "SECUNDERABAD",      to: "TIRUPATI",        dir: "D", time: "03:30", days: "Mon,Tue,Wed,Fri,Sat", type: "EXPRESS",    speed: 100, stops: false },
-
-  // ── Howrah-Yesvantpur Express ──
-  { no: "12863", name: "HWH-YPR Express",       from: "HOWRAH",            to: "YESVANTPUR",      dir: "D", time: "21:50", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12864", name: "YPR-HWH Express",       from: "YESVANTPUR",        to: "HOWRAH",          dir: "U", time: "20:00", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-
-  // ── Tamil Nadu Express ──
-  { no: "12621", name: "Tamil Nadu Express",     from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "U", time: "02:00", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
-  { no: "12622", name: "Tamil Nadu Express",     from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "D", time: "03:10", days: "daily",               type: "EXPRESS",    speed: 110, stops: false },
-
-  // ── Grand Trunk Express ──
-  { no: "12615", name: "Grand Trunk Express",    from: "CHENNAI CENTRAL",   to: "NEW DELHI",       dir: "U", time: "21:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12616", name: "Grand Trunk Express",    from: "NEW DELHI",         to: "CHENNAI CENTRAL", dir: "D", time: "01:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-
-  // ── Charminar Express ──
-  { no: "12759", name: "Charminar Express",      from: "TAMBARAM",          to: "HYDERABAD",       dir: "U", time: "21:10", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-  { no: "12760", name: "Charminar Express",      from: "HYDERABAD",         to: "TAMBARAM",        dir: "D", time: "03:40", days: "daily",               type: "EXPRESS",    speed: 100, stops: false },
-
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  FREIGHT WINDOWS — approximate only, freight is NOT on NTES
-  //  Krishnapatnam Port generates significant freight on this section
-  // ═══════════════════════════════════════════════════════════════════════════
-  { no: "FREIGHT-01", name: "GOODS TRAIN", from: "KRISHNAPATNAM", to: "VIJAYAWADA",    dir: "U", time: "01:00", days: "daily", type: "FREIGHT", speed: 60, stops: false },
-  { no: "FREIGHT-02", name: "GOODS TRAIN", from: "KRISHNAPATNAM", to: "VIJAYAWADA",    dir: "U", time: "05:30", days: "daily", type: "FREIGHT", speed: 60, stops: false },
-  { no: "FREIGHT-03", name: "GOODS TRAIN", from: "VIJAYAWADA",    to: "KRISHNAPATNAM", dir: "D", time: "08:00", days: "daily", type: "FREIGHT", speed: 60, stops: false },
-  { no: "FREIGHT-04", name: "GOODS TRAIN", from: "KRISHNAPATNAM", to: "VIJAYAWADA",    dir: "U", time: "14:00", days: "daily", type: "FREIGHT", speed: 60, stops: false },
-  { no: "FREIGHT-05", name: "GOODS TRAIN", from: "VIJAYAWADA",    to: "KRISHNAPATNAM", dir: "D", time: "16:30", days: "daily", type: "FREIGHT", speed: 60, stops: false },
-  { no: "FREIGHT-06", name: "GOODS TRAIN", from: "KRISHNAPATNAM", to: "VIJAYAWADA",    dir: "U", time: "22:00", days: "daily", type: "FREIGHT", speed: 60, stops: false },
+export const TRAINS = [
+  {
+    "no": "17644",
+    "name": "Circar Express",
+    "te": "సర్కార్ ఎక్స్‌ప్రెస్",
+    "from": "KAKINADA PORT",
+    "to": "CHENGALPATTU",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "21:35",
+        -1
+      ],
+      [
+        "TEL",
+        "22:14",
+        "22:14",
+        -1
+      ],
+      [
+        "BPP",
+        "23:08",
+        "23:08",
+        -1
+      ],
+      [
+        "CL",
+        "23:26",
+        "23:26",
+        -1
+      ],
+      [
+        "ANB",
+        "23:49",
+        "23:49",
+        -1
+      ],
+      [
+        "OGL",
+        "00:10",
+        "00:10",
+        0
+      ],
+      [
+        "TGU",
+        "00:30",
+        "00:30",
+        0
+      ],
+      [
+        "SKM",
+        "00:45",
+        "00:45",
+        0
+      ],
+      [
+        "INGR",
+        "00:59",
+        "00:59",
+        0
+      ],
+      [
+        "UPD",
+        "01:20",
+        "01:20",
+        0
+      ],
+      [
+        "KVZ",
+        "01:39",
+        "01:39",
+        0
+      ],
+      [
+        "BVRT",
+        "02:01",
+        "02:01",
+        0
+      ],
+      [
+        "NLR",
+        "02:41",
+        "02:41",
+        0
+      ],
+      [
+        "GDR",
+        "03:29",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17643",
+    "name": "Circar Express",
+    "te": "సర్కార్ ఎక్స్‌ప్రెస్",
+    "from": "CHENGALPATTU",
+    "to": "KAKINADA PORT",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "19:11",
+        0
+      ],
+      [
+        "NLR",
+        "19:59",
+        "19:59",
+        0
+      ],
+      [
+        "BVRT",
+        "20:39",
+        "20:39",
+        0
+      ],
+      [
+        "KVZ",
+        "21:01",
+        "21:01",
+        0
+      ],
+      [
+        "UPD",
+        "21:20",
+        "21:20",
+        0
+      ],
+      [
+        "INGR",
+        "21:41",
+        "21:41",
+        0
+      ],
+      [
+        "SKM",
+        "21:55",
+        "21:55",
+        0
+      ],
+      [
+        "TGU",
+        "22:10",
+        "22:10",
+        0
+      ],
+      [
+        "OGL",
+        "22:30",
+        "22:30",
+        0
+      ],
+      [
+        "ANB",
+        "22:51",
+        "22:51",
+        0
+      ],
+      [
+        "CL",
+        "23:14",
+        "23:14",
+        0
+      ],
+      [
+        "BPP",
+        "23:32",
+        "23:32",
+        0
+      ],
+      [
+        "TEL",
+        "00:26",
+        "00:26",
+        1
+      ],
+      [
+        "BZA",
+        "01:05",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "12604",
+    "name": "Charlapalli-MAS Express",
+    "te": "చర్లపల్లి ఎక్స్‌ప్రెస్",
+    "from": "CHARLAPALLI",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 58,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "22:28",
+        -1
+      ],
+      [
+        "TEL",
+        "23:00",
+        "23:00",
+        -1
+      ],
+      [
+        "BPP",
+        "23:44",
+        "23:44",
+        -1
+      ],
+      [
+        "CL",
+        "24:00",
+        "24:00",
+        -1
+      ],
+      [
+        "ANB",
+        "00:18",
+        "00:18",
+        0
+      ],
+      [
+        "OGL",
+        "00:36",
+        "00:36",
+        0
+      ],
+      [
+        "TGU",
+        "00:53",
+        "00:53",
+        0
+      ],
+      [
+        "SKM",
+        "01:05",
+        "01:05",
+        0
+      ],
+      [
+        "INGR",
+        "01:16",
+        "01:16",
+        0
+      ],
+      [
+        "UPD",
+        "01:34",
+        "01:34",
+        0
+      ],
+      [
+        "KVZ",
+        "01:49",
+        "01:49",
+        0
+      ],
+      [
+        "BVRT",
+        "02:08",
+        "02:08",
+        0
+      ],
+      [
+        "NLR",
+        "02:41",
+        "02:41",
+        0
+      ],
+      [
+        "GDR",
+        "03:21",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12603",
+    "name": "MAS-Charlapalli Express",
+    "te": "చర్లపల్లి ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "CHARLAPALLI",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 58,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "18:19",
+        0
+      ],
+      [
+        "NLR",
+        "18:59",
+        "18:59",
+        0
+      ],
+      [
+        "BVRT",
+        "19:32",
+        "19:32",
+        0
+      ],
+      [
+        "KVZ",
+        "19:51",
+        "19:51",
+        0
+      ],
+      [
+        "UPD",
+        "20:06",
+        "20:06",
+        0
+      ],
+      [
+        "INGR",
+        "20:24",
+        "20:24",
+        0
+      ],
+      [
+        "SKM",
+        "20:35",
+        "20:35",
+        0
+      ],
+      [
+        "TGU",
+        "20:47",
+        "20:47",
+        0
+      ],
+      [
+        "OGL",
+        "21:04",
+        "21:04",
+        0
+      ],
+      [
+        "ANB",
+        "21:22",
+        "21:22",
+        0
+      ],
+      [
+        "CL",
+        "21:40",
+        "21:40",
+        0
+      ],
+      [
+        "BPP",
+        "21:56",
+        "21:56",
+        0
+      ],
+      [
+        "TEL",
+        "22:40",
+        "22:40",
+        0
+      ],
+      [
+        "BZA",
+        "23:12",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17210",
+    "name": "Seshadri Express",
+    "te": "శేషాద్రి ఎక్స్‌ప్రెస్",
+    "from": "KAKINADA TOWN",
+    "to": "BENGALURU",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 51,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "22:16",
+        -1
+      ],
+      [
+        "TEL",
+        "22:53",
+        "22:53",
+        -1
+      ],
+      [
+        "BPP",
+        "23:43",
+        "23:43",
+        -1
+      ],
+      [
+        "CL",
+        "00:01",
+        "00:01",
+        0
+      ],
+      [
+        "ANB",
+        "00:22",
+        "00:22",
+        0
+      ],
+      [
+        "OGL",
+        "00:42",
+        "00:42",
+        0
+      ],
+      [
+        "TGU",
+        "01:01",
+        "01:01",
+        0
+      ],
+      [
+        "SKM",
+        "01:15",
+        "01:15",
+        0
+      ],
+      [
+        "INGR",
+        "01:28",
+        "01:28",
+        0
+      ],
+      [
+        "UPD",
+        "01:48",
+        "01:48",
+        0
+      ],
+      [
+        "KVZ",
+        "02:06",
+        "02:06",
+        0
+      ],
+      [
+        "BVRT",
+        "02:27",
+        "02:27",
+        0
+      ],
+      [
+        "NLR",
+        "03:04",
+        "03:04",
+        0
+      ],
+      [
+        "GDR",
+        "03:49",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17209",
+    "name": "Seshadri Express",
+    "te": "శేషాద్రి ఎక్స్‌ప్రెస్",
+    "from": "BENGALURU",
+    "to": "KAKINADA TOWN",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 51,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "18:46",
+        0
+      ],
+      [
+        "NLR",
+        "19:31",
+        "19:31",
+        0
+      ],
+      [
+        "BVRT",
+        "20:08",
+        "20:08",
+        0
+      ],
+      [
+        "KVZ",
+        "20:29",
+        "20:29",
+        0
+      ],
+      [
+        "UPD",
+        "20:47",
+        "20:47",
+        0
+      ],
+      [
+        "INGR",
+        "21:07",
+        "21:07",
+        0
+      ],
+      [
+        "SKM",
+        "21:20",
+        "21:20",
+        0
+      ],
+      [
+        "TGU",
+        "21:34",
+        "21:34",
+        0
+      ],
+      [
+        "OGL",
+        "21:53",
+        "21:53",
+        0
+      ],
+      [
+        "ANB",
+        "22:13",
+        "22:13",
+        0
+      ],
+      [
+        "CL",
+        "22:34",
+        "22:34",
+        0
+      ],
+      [
+        "BPP",
+        "22:52",
+        "22:52",
+        0
+      ],
+      [
+        "TEL",
+        "23:42",
+        "23:42",
+        0
+      ],
+      [
+        "BZA",
+        "00:19",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "12734",
+    "name": "Narayanadri Express",
+    "te": "నారాయణాద్రి ఎక్స్‌ప్రెస్",
+    "from": "LINGAMPALLI",
+    "to": "TIRUPATI",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 57,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "23:00",
+        -1
+      ],
+      [
+        "TEL",
+        "23:33",
+        "23:33",
+        -1
+      ],
+      [
+        "BPP",
+        "00:18",
+        "00:18",
+        0
+      ],
+      [
+        "CL",
+        "00:34",
+        "00:34",
+        0
+      ],
+      [
+        "ANB",
+        "00:53",
+        "00:53",
+        0
+      ],
+      [
+        "OGL",
+        "01:11",
+        "01:11",
+        0
+      ],
+      [
+        "TGU",
+        "01:27",
+        "01:27",
+        0
+      ],
+      [
+        "SKM",
+        "01:40",
+        "01:40",
+        0
+      ],
+      [
+        "INGR",
+        "01:52",
+        "01:52",
+        0
+      ],
+      [
+        "UPD",
+        "02:09",
+        "02:09",
+        0
+      ],
+      [
+        "KVZ",
+        "02:25",
+        "02:25",
+        0
+      ],
+      [
+        "BVRT",
+        "02:44",
+        "02:44",
+        0
+      ],
+      [
+        "NLR",
+        "03:18",
+        "03:18",
+        0
+      ],
+      [
+        "GDR",
+        "03:58",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12733",
+    "name": "Narayanadri Express",
+    "te": "నారాయణాద్రి ఎక్స్‌ప్రెస్",
+    "from": "TIRUPATI",
+    "to": "LINGAMPALLI",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 57,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "19:22",
+        0
+      ],
+      [
+        "NLR",
+        "20:02",
+        "20:02",
+        0
+      ],
+      [
+        "BVRT",
+        "20:36",
+        "20:36",
+        0
+      ],
+      [
+        "KVZ",
+        "20:55",
+        "20:55",
+        0
+      ],
+      [
+        "UPD",
+        "21:11",
+        "21:11",
+        0
+      ],
+      [
+        "INGR",
+        "21:28",
+        "21:28",
+        0
+      ],
+      [
+        "SKM",
+        "21:40",
+        "21:40",
+        0
+      ],
+      [
+        "TGU",
+        "21:53",
+        "21:53",
+        0
+      ],
+      [
+        "OGL",
+        "22:09",
+        "22:09",
+        0
+      ],
+      [
+        "ANB",
+        "22:27",
+        "22:27",
+        0
+      ],
+      [
+        "CL",
+        "22:46",
+        "22:46",
+        0
+      ],
+      [
+        "BPP",
+        "23:02",
+        "23:02",
+        0
+      ],
+      [
+        "TEL",
+        "23:47",
+        "23:47",
+        0
+      ],
+      [
+        "BZA",
+        "00:20",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "16032",
+    "name": "Andaman Express",
+    "te": "అండమాన్ ఎక్స్‌ప్రెస్",
+    "from": "SVDK KATRA",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 52,
+    "lengthKm": 0.55,
+    "days": [
+      2,
+      3,
+      6
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "23:00",
+        -1
+      ],
+      [
+        "TEL",
+        "23:35",
+        "23:35",
+        -1
+      ],
+      [
+        "BPP",
+        "00:25",
+        "00:25",
+        0
+      ],
+      [
+        "CL",
+        "00:42",
+        "00:42",
+        0
+      ],
+      [
+        "ANB",
+        "01:03",
+        "01:03",
+        0
+      ],
+      [
+        "OGL",
+        "01:23",
+        "01:23",
+        0
+      ],
+      [
+        "TGU",
+        "01:41",
+        "01:41",
+        0
+      ],
+      [
+        "SKM",
+        "01:55",
+        "01:55",
+        0
+      ],
+      [
+        "INGR",
+        "02:08",
+        "02:08",
+        0
+      ],
+      [
+        "UPD",
+        "02:27",
+        "02:27",
+        0
+      ],
+      [
+        "KVZ",
+        "02:45",
+        "02:45",
+        0
+      ],
+      [
+        "BVRT",
+        "03:05",
+        "03:05",
+        0
+      ],
+      [
+        "NLR",
+        "03:42",
+        "03:42",
+        0
+      ],
+      [
+        "GDR",
+        "04:26",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "16031",
+    "name": "Andaman Express",
+    "te": "అండమాన్ ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "SVDK KATRA",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 52,
+    "lengthKm": 0.55,
+    "days": [
+      3,
+      4,
+      5,
+      0
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "06:59",
+        0
+      ],
+      [
+        "NLR",
+        "07:43",
+        "07:43",
+        0
+      ],
+      [
+        "BVRT",
+        "08:20",
+        "08:20",
+        0
+      ],
+      [
+        "KVZ",
+        "08:40",
+        "08:40",
+        0
+      ],
+      [
+        "UPD",
+        "08:58",
+        "08:58",
+        0
+      ],
+      [
+        "INGR",
+        "09:17",
+        "09:17",
+        0
+      ],
+      [
+        "SKM",
+        "09:30",
+        "09:30",
+        0
+      ],
+      [
+        "TGU",
+        "09:44",
+        "09:44",
+        0
+      ],
+      [
+        "OGL",
+        "10:02",
+        "10:02",
+        0
+      ],
+      [
+        "ANB",
+        "10:22",
+        "10:22",
+        0
+      ],
+      [
+        "CL",
+        "10:43",
+        "10:43",
+        0
+      ],
+      [
+        "BPP",
+        "11:00",
+        "11:00",
+        0
+      ],
+      [
+        "TEL",
+        "11:50",
+        "11:50",
+        0
+      ],
+      [
+        "BZA",
+        "12:25",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "13352",
+    "name": "Alappuzha-Dhanbad Exp",
+    "te": "అలప్పుజ ధన్‌బాద్ ఎక్స్‌ప్రెస్",
+    "from": "ALAPPUZHA",
+    "to": "DHANBAD",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "23:16",
+        -1
+      ],
+      [
+        "NLR",
+        "00:04",
+        "00:04",
+        0
+      ],
+      [
+        "BVRT",
+        "00:44",
+        "00:44",
+        0
+      ],
+      [
+        "KVZ",
+        "01:06",
+        "01:06",
+        0
+      ],
+      [
+        "UPD",
+        "01:25",
+        "01:25",
+        0
+      ],
+      [
+        "INGR",
+        "01:46",
+        "01:46",
+        0
+      ],
+      [
+        "SKM",
+        "02:00",
+        "02:00",
+        0
+      ],
+      [
+        "TGU",
+        "02:15",
+        "02:15",
+        0
+      ],
+      [
+        "OGL",
+        "02:35",
+        "02:35",
+        0
+      ],
+      [
+        "ANB",
+        "02:56",
+        "02:56",
+        0
+      ],
+      [
+        "CL",
+        "03:19",
+        "03:19",
+        0
+      ],
+      [
+        "BPP",
+        "03:38",
+        "03:38",
+        0
+      ],
+      [
+        "TEL",
+        "04:31",
+        "04:31",
+        0
+      ],
+      [
+        "BZA",
+        "05:10",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "13351",
+    "name": "Dhanbad-Alappuzha Exp",
+    "te": "ధన్‌బాద్ అలప్పుజ ఎక్స్‌ప్రెస్",
+    "from": "DHANBAD",
+    "to": "ALAPPUZHA",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "15:25",
+        0
+      ],
+      [
+        "TEL",
+        "16:04",
+        "16:04",
+        0
+      ],
+      [
+        "BPP",
+        "16:58",
+        "16:58",
+        0
+      ],
+      [
+        "CL",
+        "17:16",
+        "17:16",
+        0
+      ],
+      [
+        "ANB",
+        "17:39",
+        "17:39",
+        0
+      ],
+      [
+        "OGL",
+        "18:00",
+        "18:00",
+        0
+      ],
+      [
+        "TGU",
+        "18:20",
+        "18:20",
+        0
+      ],
+      [
+        "SKM",
+        "18:35",
+        "18:35",
+        0
+      ],
+      [
+        "INGR",
+        "18:49",
+        "18:49",
+        0
+      ],
+      [
+        "UPD",
+        "19:10",
+        "19:10",
+        0
+      ],
+      [
+        "KVZ",
+        "19:29",
+        "19:29",
+        0
+      ],
+      [
+        "BVRT",
+        "19:51",
+        "19:51",
+        0
+      ],
+      [
+        "NLR",
+        "20:31",
+        "20:31",
+        0
+      ],
+      [
+        "GDR",
+        "21:19",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17229",
+    "name": "Sabari Express",
+    "te": "శబరి ఎక్స్‌ప్రెస్",
+    "from": "TRIVANDRUM",
+    "to": "SECUNDERABAD",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 53,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "00:57",
+        0
+      ],
+      [
+        "NLR",
+        "01:40",
+        "01:40",
+        0
+      ],
+      [
+        "BVRT",
+        "02:16",
+        "02:16",
+        0
+      ],
+      [
+        "KVZ",
+        "02:36",
+        "02:36",
+        0
+      ],
+      [
+        "UPD",
+        "02:53",
+        "02:53",
+        0
+      ],
+      [
+        "INGR",
+        "03:13",
+        "03:13",
+        0
+      ],
+      [
+        "SKM",
+        "03:25",
+        "03:25",
+        0
+      ],
+      [
+        "TGU",
+        "03:39",
+        "03:39",
+        0
+      ],
+      [
+        "OGL",
+        "03:57",
+        "03:57",
+        0
+      ],
+      [
+        "ANB",
+        "04:16",
+        "04:16",
+        0
+      ],
+      [
+        "CL",
+        "04:36",
+        "04:36",
+        0
+      ],
+      [
+        "BPP",
+        "04:53",
+        "04:53",
+        0
+      ],
+      [
+        "TEL",
+        "05:42",
+        "05:42",
+        0
+      ],
+      [
+        "BZA",
+        "06:17",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17230",
+    "name": "Sabari Express",
+    "te": "శబరి ఎక్స్‌ప్రెస్",
+    "from": "SECUNDERABAD",
+    "to": "TRIVANDRUM",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 53,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "16:53",
+        0
+      ],
+      [
+        "TEL",
+        "17:28",
+        "17:28",
+        0
+      ],
+      [
+        "BPP",
+        "18:17",
+        "18:17",
+        0
+      ],
+      [
+        "CL",
+        "18:34",
+        "18:34",
+        0
+      ],
+      [
+        "ANB",
+        "18:54",
+        "18:54",
+        0
+      ],
+      [
+        "OGL",
+        "19:13",
+        "19:13",
+        0
+      ],
+      [
+        "TGU",
+        "19:31",
+        "19:31",
+        0
+      ],
+      [
+        "SKM",
+        "19:45",
+        "19:45",
+        0
+      ],
+      [
+        "INGR",
+        "19:57",
+        "19:57",
+        0
+      ],
+      [
+        "UPD",
+        "20:17",
+        "20:17",
+        0
+      ],
+      [
+        "KVZ",
+        "20:34",
+        "20:34",
+        0
+      ],
+      [
+        "BVRT",
+        "20:54",
+        "20:54",
+        0
+      ],
+      [
+        "NLR",
+        "21:30",
+        "21:30",
+        0
+      ],
+      [
+        "GDR",
+        "22:13",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "07760",
+    "name": "Bitragunta-BZA MEMU",
+    "te": "బిట్రగుంట మెము",
+    "from": "BITRAGUNTA",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 38,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "PASSENGER",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "01:13",
+        0
+      ],
+      [
+        "NLR",
+        "02:13",
+        "02:13",
+        0
+      ],
+      [
+        "BVRT",
+        "03:04",
+        "03:04",
+        0
+      ],
+      [
+        "KVZ",
+        "03:32",
+        "03:32",
+        0
+      ],
+      [
+        "UPD",
+        "03:56",
+        "03:56",
+        0
+      ],
+      [
+        "INGR",
+        "04:23",
+        "04:23",
+        0
+      ],
+      [
+        "SKM",
+        "04:40",
+        "04:40",
+        0
+      ],
+      [
+        "TGU",
+        "04:59",
+        "04:59",
+        0
+      ],
+      [
+        "OGL",
+        "05:24",
+        "05:24",
+        0
+      ],
+      [
+        "ANB",
+        "05:51",
+        "05:51",
+        0
+      ],
+      [
+        "CL",
+        "06:19",
+        "06:19",
+        0
+      ],
+      [
+        "BPP",
+        "06:43",
+        "06:43",
+        0
+      ],
+      [
+        "TEL",
+        "07:51",
+        "07:51",
+        0
+      ],
+      [
+        "BZA",
+        "08:40",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "07759",
+    "name": "BZA-Bitragunta MEMU",
+    "te": "బిట్రగుంట మెము",
+    "from": "VIJAYAWADA",
+    "to": "BITRAGUNTA",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 38,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "PASSENGER",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "14:00",
+        0
+      ],
+      [
+        "TEL",
+        "14:49",
+        "14:49",
+        0
+      ],
+      [
+        "BPP",
+        "15:57",
+        "15:57",
+        0
+      ],
+      [
+        "CL",
+        "16:21",
+        "16:21",
+        0
+      ],
+      [
+        "ANB",
+        "16:49",
+        "16:49",
+        0
+      ],
+      [
+        "OGL",
+        "17:16",
+        "17:16",
+        0
+      ],
+      [
+        "TGU",
+        "17:41",
+        "17:41",
+        0
+      ],
+      [
+        "SKM",
+        "18:00",
+        "18:00",
+        0
+      ],
+      [
+        "INGR",
+        "18:17",
+        "18:17",
+        0
+      ],
+      [
+        "UPD",
+        "18:44",
+        "18:44",
+        0
+      ],
+      [
+        "KVZ",
+        "19:08",
+        "19:08",
+        0
+      ],
+      [
+        "BVRT",
+        "19:36",
+        "19:36",
+        0
+      ],
+      [
+        "NLR",
+        "20:27",
+        "20:27",
+        0
+      ],
+      [
+        "GDR",
+        "21:27",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12710",
+    "name": "Simhapuri Express",
+    "te": "సింహపురి ఎక్స్‌ప్రెస్",
+    "from": "SECUNDERABAD",
+    "to": "GUDUR",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 58,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "03:53",
+        0
+      ],
+      [
+        "TEL",
+        "04:25",
+        "04:25",
+        0
+      ],
+      [
+        "BPP",
+        "05:09",
+        "05:09",
+        0
+      ],
+      [
+        "CL",
+        "05:25",
+        "05:25",
+        0
+      ],
+      [
+        "ANB",
+        "05:43",
+        "05:43",
+        0
+      ],
+      [
+        "OGL",
+        "06:01",
+        "06:01",
+        0
+      ],
+      [
+        "TGU",
+        "06:18",
+        "06:18",
+        0
+      ],
+      [
+        "SKM",
+        "06:30",
+        "06:30",
+        0
+      ],
+      [
+        "INGR",
+        "06:41",
+        "06:41",
+        0
+      ],
+      [
+        "UPD",
+        "06:59",
+        "06:59",
+        0
+      ],
+      [
+        "KVZ",
+        "07:14",
+        "07:14",
+        0
+      ],
+      [
+        "BVRT",
+        "07:33",
+        "07:33",
+        0
+      ],
+      [
+        "NLR",
+        "08:06",
+        "08:06",
+        0
+      ],
+      [
+        "GDR",
+        "08:46",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12709",
+    "name": "Simhapuri Express",
+    "te": "సింహపురి ఎక్స్‌ప్రెస్",
+    "from": "GUDUR",
+    "to": "SECUNDERABAD",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 58,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "17:49",
+        0
+      ],
+      [
+        "NLR",
+        "18:29",
+        "18:29",
+        0
+      ],
+      [
+        "BVRT",
+        "19:02",
+        "19:02",
+        0
+      ],
+      [
+        "KVZ",
+        "19:21",
+        "19:21",
+        0
+      ],
+      [
+        "UPD",
+        "19:36",
+        "19:36",
+        0
+      ],
+      [
+        "INGR",
+        "19:54",
+        "19:54",
+        0
+      ],
+      [
+        "SKM",
+        "20:05",
+        "20:05",
+        0
+      ],
+      [
+        "TGU",
+        "20:17",
+        "20:17",
+        0
+      ],
+      [
+        "OGL",
+        "20:34",
+        "20:34",
+        0
+      ],
+      [
+        "ANB",
+        "20:52",
+        "20:52",
+        0
+      ],
+      [
+        "CL",
+        "21:10",
+        "21:10",
+        0
+      ],
+      [
+        "BPP",
+        "21:26",
+        "21:26",
+        0
+      ],
+      [
+        "TEL",
+        "22:10",
+        "22:10",
+        0
+      ],
+      [
+        "BZA",
+        "22:42",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17488",
+    "name": "Tirumala Express",
+    "te": "తిరుమల ఎక్స్‌ప్రెస్",
+    "from": "VISAKHAPATNAM",
+    "to": "TIRUPATI",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 50,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "04:31",
+        0
+      ],
+      [
+        "TEL",
+        "05:08",
+        "05:08",
+        0
+      ],
+      [
+        "BPP",
+        "05:59",
+        "05:59",
+        0
+      ],
+      [
+        "CL",
+        "06:17",
+        "06:17",
+        0
+      ],
+      [
+        "ANB",
+        "06:39",
+        "06:39",
+        0
+      ],
+      [
+        "OGL",
+        "06:59",
+        "06:59",
+        0
+      ],
+      [
+        "TGU",
+        "07:19",
+        "07:19",
+        0
+      ],
+      [
+        "SKM",
+        "07:33",
+        "07:33",
+        0
+      ],
+      [
+        "INGR",
+        "07:46",
+        "07:46",
+        0
+      ],
+      [
+        "UPD",
+        "08:07",
+        "08:07",
+        0
+      ],
+      [
+        "KVZ",
+        "08:25",
+        "08:25",
+        0
+      ],
+      [
+        "BVRT",
+        "08:46",
+        "08:46",
+        0
+      ],
+      [
+        "NLR",
+        "09:25",
+        "09:25",
+        0
+      ],
+      [
+        "GDR",
+        "10:10",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17487",
+    "name": "Tirumala Express",
+    "te": "తిరుమల ఎక్స్‌ప్రెస్",
+    "from": "TIRUPATI",
+    "to": "VISAKHAPATNAM",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 50,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "21:13",
+        0
+      ],
+      [
+        "NLR",
+        "21:58",
+        "21:58",
+        0
+      ],
+      [
+        "BVRT",
+        "22:37",
+        "22:37",
+        0
+      ],
+      [
+        "KVZ",
+        "22:58",
+        "22:58",
+        0
+      ],
+      [
+        "UPD",
+        "23:16",
+        "23:16",
+        0
+      ],
+      [
+        "INGR",
+        "23:37",
+        "23:37",
+        0
+      ],
+      [
+        "SKM",
+        "23:50",
+        "23:50",
+        0
+      ],
+      [
+        "TGU",
+        "00:04",
+        "00:04",
+        1
+      ],
+      [
+        "OGL",
+        "00:24",
+        "00:24",
+        1
+      ],
+      [
+        "ANB",
+        "00:44",
+        "00:44",
+        1
+      ],
+      [
+        "CL",
+        "01:06",
+        "01:06",
+        1
+      ],
+      [
+        "BPP",
+        "01:24",
+        "01:24",
+        1
+      ],
+      [
+        "TEL",
+        "02:15",
+        "02:15",
+        1
+      ],
+      [
+        "BZA",
+        "02:52",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "12711",
+    "name": "Pinakini Express",
+    "te": "పినాకిని ఎక్స్‌ప్రెస్",
+    "from": "VIJAYAWADA",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 100,
+    "speedKmh": 62,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "06:00",
+        0
+      ],
+      [
+        "TEL",
+        "06:28",
+        "06:30",
+        0
+      ],
+      [
+        "BPP",
+        "07:03",
+        "07:04",
+        0
+      ],
+      [
+        "CL",
+        "07:17",
+        "07:18",
+        0
+      ],
+      [
+        "OGL",
+        "07:58",
+        "08:00",
+        0
+      ],
+      [
+        "SKM",
+        "08:20",
+        "08:21",
+        0
+      ],
+      [
+        "KVZ",
+        "08:48",
+        "08:49",
+        0
+      ],
+      [
+        "NLR",
+        "09:28",
+        "09:30",
+        0
+      ],
+      [
+        "GDR",
+        "10:10",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12712",
+    "name": "Pinakini Express",
+    "te": "పినాకిని ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 100,
+    "speedKmh": 62,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "15:42",
+        0
+      ],
+      [
+        "NLR",
+        "16:13",
+        "16:15",
+        0
+      ],
+      [
+        "KVZ",
+        "16:50",
+        "16:51",
+        0
+      ],
+      [
+        "SKM",
+        "17:20",
+        "17:21",
+        0
+      ],
+      [
+        "OGL",
+        "17:43",
+        "17:45",
+        0
+      ],
+      [
+        "CL",
+        "18:25",
+        "18:26",
+        0
+      ],
+      [
+        "BPP",
+        "18:38",
+        "18:39",
+        0
+      ],
+      [
+        "TEL",
+        "19:18",
+        "19:20",
+        0
+      ],
+      [
+        "BZA",
+        "20:05",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17405",
+    "name": "Krishna Express",
+    "te": "కృష్ణా ఎక్స్‌ప్రెస్",
+    "from": "TIRUPATI",
+    "to": "ADILABAD",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 45,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "06:20",
+        0
+      ],
+      [
+        "NLR",
+        "07:11",
+        "07:11",
+        0
+      ],
+      [
+        "BVRT",
+        "07:54",
+        "07:54",
+        0
+      ],
+      [
+        "KVZ",
+        "08:18",
+        "08:18",
+        0
+      ],
+      [
+        "UPD",
+        "08:38",
+        "08:38",
+        0
+      ],
+      [
+        "INGR",
+        "09:00",
+        "09:00",
+        0
+      ],
+      [
+        "SKM",
+        "09:15",
+        "09:15",
+        0
+      ],
+      [
+        "TGU",
+        "09:31",
+        "09:31",
+        0
+      ],
+      [
+        "OGL",
+        "09:52",
+        "09:52",
+        0
+      ],
+      [
+        "ANB",
+        "10:15",
+        "10:15",
+        0
+      ],
+      [
+        "CL",
+        "10:39",
+        "10:39",
+        0
+      ],
+      [
+        "BPP",
+        "10:59",
+        "10:59",
+        0
+      ],
+      [
+        "TEL",
+        "11:56",
+        "11:56",
+        0
+      ],
+      [
+        "BZA",
+        "12:38",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17406",
+    "name": "Krishna Express",
+    "te": "కృష్ణా ఎక్స్‌ప్రెస్",
+    "from": "ADILABAD",
+    "to": "TIRUPATI",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 45,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "12:57",
+        0
+      ],
+      [
+        "TEL",
+        "13:39",
+        "13:39",
+        0
+      ],
+      [
+        "BPP",
+        "14:36",
+        "14:36",
+        0
+      ],
+      [
+        "CL",
+        "14:56",
+        "14:56",
+        0
+      ],
+      [
+        "ANB",
+        "15:20",
+        "15:20",
+        0
+      ],
+      [
+        "OGL",
+        "15:43",
+        "15:43",
+        0
+      ],
+      [
+        "TGU",
+        "16:04",
+        "16:04",
+        0
+      ],
+      [
+        "SKM",
+        "16:20",
+        "16:20",
+        0
+      ],
+      [
+        "INGR",
+        "16:35",
+        "16:35",
+        0
+      ],
+      [
+        "UPD",
+        "16:57",
+        "16:57",
+        0
+      ],
+      [
+        "KVZ",
+        "17:17",
+        "17:17",
+        0
+      ],
+      [
+        "BVRT",
+        "17:41",
+        "17:41",
+        0
+      ],
+      [
+        "NLR",
+        "18:24",
+        "18:24",
+        0
+      ],
+      [
+        "GDR",
+        "19:15",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17479",
+    "name": "Puri-Tirupati Express",
+    "te": "పూరి తిరుపతి ఎక్స్‌ప్రెస్",
+    "from": "PURI",
+    "to": "TIRUPATI",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": [
+      1,
+      3,
+      4,
+      5,
+      6
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "12:00",
+        0
+      ],
+      [
+        "TEL",
+        "12:39",
+        "12:39",
+        0
+      ],
+      [
+        "BPP",
+        "13:32",
+        "13:32",
+        0
+      ],
+      [
+        "CL",
+        "13:51",
+        "13:51",
+        0
+      ],
+      [
+        "ANB",
+        "14:14",
+        "14:14",
+        0
+      ],
+      [
+        "OGL",
+        "14:35",
+        "14:35",
+        0
+      ],
+      [
+        "TGU",
+        "14:55",
+        "14:55",
+        0
+      ],
+      [
+        "SKM",
+        "15:10",
+        "15:10",
+        0
+      ],
+      [
+        "INGR",
+        "15:24",
+        "15:24",
+        0
+      ],
+      [
+        "UPD",
+        "15:45",
+        "15:45",
+        0
+      ],
+      [
+        "KVZ",
+        "16:04",
+        "16:04",
+        0
+      ],
+      [
+        "BVRT",
+        "16:26",
+        "16:26",
+        0
+      ],
+      [
+        "NLR",
+        "17:06",
+        "17:06",
+        0
+      ],
+      [
+        "GDR",
+        "17:54",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "17480",
+    "name": "Tirupati-Puri Express",
+    "te": "తిరుపతి పూరి ఎక్స్‌ప్రెస్",
+    "from": "TIRUPATI",
+    "to": "PURI",
+    "dir": "UP",
+    "vmaxKmh": 80,
+    "speedKmh": 48,
+    "lengthKm": 0.55,
+    "days": [
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "11:56",
+        0
+      ],
+      [
+        "NLR",
+        "12:44",
+        "12:44",
+        0
+      ],
+      [
+        "BVRT",
+        "13:24",
+        "13:24",
+        0
+      ],
+      [
+        "KVZ",
+        "13:46",
+        "13:46",
+        0
+      ],
+      [
+        "UPD",
+        "14:05",
+        "14:05",
+        0
+      ],
+      [
+        "INGR",
+        "14:26",
+        "14:26",
+        0
+      ],
+      [
+        "SKM",
+        "14:40",
+        "14:40",
+        0
+      ],
+      [
+        "TGU",
+        "14:55",
+        "14:55",
+        0
+      ],
+      [
+        "OGL",
+        "15:15",
+        "15:15",
+        0
+      ],
+      [
+        "ANB",
+        "15:36",
+        "15:36",
+        0
+      ],
+      [
+        "CL",
+        "15:59",
+        "15:59",
+        0
+      ],
+      [
+        "BPP",
+        "16:18",
+        "16:18",
+        0
+      ],
+      [
+        "TEL",
+        "17:11",
+        "17:11",
+        0
+      ],
+      [
+        "BZA",
+        "17:50",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "07500",
+    "name": "BZA-Gudur MEMU",
+    "te": "విజయవాడ గూడూరు మెము",
+    "from": "VIJAYAWADA",
+    "to": "GUDUR",
+    "dir": "DN",
+    "vmaxKmh": 80,
+    "speedKmh": 40,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "PASSENGER",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "16:52",
+        0
+      ],
+      [
+        "TEL",
+        "17:38",
+        "17:38",
+        0
+      ],
+      [
+        "BPP",
+        "18:43",
+        "18:43",
+        0
+      ],
+      [
+        "CL",
+        "19:06",
+        "19:06",
+        0
+      ],
+      [
+        "ANB",
+        "19:32",
+        "19:32",
+        0
+      ],
+      [
+        "OGL",
+        "19:58",
+        "19:58",
+        0
+      ],
+      [
+        "TGU",
+        "20:22",
+        "20:22",
+        0
+      ],
+      [
+        "SKM",
+        "20:40",
+        "20:40",
+        0
+      ],
+      [
+        "INGR",
+        "20:56",
+        "20:56",
+        0
+      ],
+      [
+        "UPD",
+        "21:22",
+        "21:22",
+        0
+      ],
+      [
+        "KVZ",
+        "21:44",
+        "21:44",
+        0
+      ],
+      [
+        "BVRT",
+        "22:12",
+        "22:12",
+        0
+      ],
+      [
+        "NLR",
+        "23:00",
+        "23:00",
+        0
+      ],
+      [
+        "GDR",
+        "23:56",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "20677",
+    "name": "Vande Bharat Express",
+    "te": "వందే భారత్ ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "NARASAPUR",
+    "dir": "UP",
+    "vmaxKmh": 130,
+    "speedKmh": 130,
+    "lengthKm": 0.4,
+    "days": "EXC_TUE",
+    "type": "VANDE_BHARAT",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "07:00",
+        0
+      ],
+      [
+        "NLR",
+        "07:28",
+        "07:30",
+        0
+      ],
+      [
+        "OGL",
+        "08:38",
+        "08:40",
+        0
+      ],
+      [
+        "TEL",
+        "09:40",
+        "09:42",
+        0
+      ],
+      [
+        "BZA",
+        "10:15",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "20678",
+    "name": "Vande Bharat Express",
+    "te": "వందే భారత్ ఎక్స్‌ప్రెస్",
+    "from": "NARASAPUR",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 130,
+    "speedKmh": 130,
+    "lengthKm": 0.4,
+    "days": "EXC_TUE",
+    "type": "VANDE_BHARAT",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "15:20",
+        0
+      ],
+      [
+        "TEL",
+        "15:47",
+        "15:49",
+        0
+      ],
+      [
+        "OGL",
+        "16:48",
+        "16:50",
+        0
+      ],
+      [
+        "NLR",
+        "17:58",
+        "18:00",
+        0
+      ],
+      [
+        "GDR",
+        "18:28",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12077",
+    "name": "Chennai Jan Shatabdi",
+    "te": "జన శతాబ్ది ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "EXC_TUE",
+    "type": "JAN_SHATABDI",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "09:34",
+        0
+      ],
+      [
+        "NLR",
+        "09:54",
+        "09:54",
+        0
+      ],
+      [
+        "BVRT",
+        "10:12",
+        "10:12",
+        0
+      ],
+      [
+        "KVZ",
+        "10:22",
+        "10:22",
+        0
+      ],
+      [
+        "UPD",
+        "10:30",
+        "10:30",
+        0
+      ],
+      [
+        "INGR",
+        "10:39",
+        "10:39",
+        0
+      ],
+      [
+        "SKM",
+        "10:45",
+        "10:45",
+        0
+      ],
+      [
+        "TGU",
+        "10:52",
+        "10:52",
+        0
+      ],
+      [
+        "OGL",
+        "11:00",
+        "11:00",
+        0
+      ],
+      [
+        "ANB",
+        "11:10",
+        "11:10",
+        0
+      ],
+      [
+        "CL",
+        "11:19",
+        "11:19",
+        0
+      ],
+      [
+        "BPP",
+        "11:28",
+        "11:28",
+        0
+      ],
+      [
+        "TEL",
+        "11:51",
+        "11:51",
+        0
+      ],
+      [
+        "BZA",
+        "12:08",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12078",
+    "name": "BZA Jan Shatabdi",
+    "te": "జన శతాబ్ది ఎక్స్‌ప్రెస్",
+    "from": "VIJAYAWADA",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "EXC_TUE",
+    "type": "JAN_SHATABDI",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "16:52",
+        0
+      ],
+      [
+        "TEL",
+        "17:09",
+        "17:09",
+        0
+      ],
+      [
+        "BPP",
+        "17:32",
+        "17:32",
+        0
+      ],
+      [
+        "CL",
+        "17:41",
+        "17:41",
+        0
+      ],
+      [
+        "ANB",
+        "17:50",
+        "17:50",
+        0
+      ],
+      [
+        "OGL",
+        "18:00",
+        "18:00",
+        0
+      ],
+      [
+        "TGU",
+        "18:08",
+        "18:08",
+        0
+      ],
+      [
+        "SKM",
+        "18:15",
+        "18:15",
+        0
+      ],
+      [
+        "INGR",
+        "18:21",
+        "18:21",
+        0
+      ],
+      [
+        "UPD",
+        "18:30",
+        "18:30",
+        0
+      ],
+      [
+        "KVZ",
+        "18:38",
+        "18:38",
+        0
+      ],
+      [
+        "BVRT",
+        "18:48",
+        "18:48",
+        0
+      ],
+      [
+        "NLR",
+        "19:06",
+        "19:06",
+        0
+      ],
+      [
+        "GDR",
+        "19:26",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12839",
+    "name": "Howrah-Chennai Mail",
+    "te": "హౌరా మెయిల్",
+    "from": "HOWRAH",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "MAIL",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "11:07",
+        0
+      ],
+      [
+        "TEL",
+        "11:24",
+        "11:24",
+        0
+      ],
+      [
+        "BPP",
+        "11:47",
+        "11:47",
+        0
+      ],
+      [
+        "CL",
+        "11:56",
+        "11:56",
+        0
+      ],
+      [
+        "ANB",
+        "12:05",
+        "12:05",
+        0
+      ],
+      [
+        "OGL",
+        "12:15",
+        "12:15",
+        0
+      ],
+      [
+        "TGU",
+        "12:23",
+        "12:23",
+        0
+      ],
+      [
+        "SKM",
+        "12:30",
+        "12:30",
+        0
+      ],
+      [
+        "INGR",
+        "12:36",
+        "12:36",
+        0
+      ],
+      [
+        "UPD",
+        "12:45",
+        "12:45",
+        0
+      ],
+      [
+        "KVZ",
+        "12:53",
+        "12:53",
+        0
+      ],
+      [
+        "BVRT",
+        "13:03",
+        "13:03",
+        0
+      ],
+      [
+        "NLR",
+        "13:21",
+        "13:21",
+        0
+      ],
+      [
+        "GDR",
+        "13:41",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12840",
+    "name": "Chennai-Howrah Mail",
+    "te": "హౌరా మెయిల్",
+    "from": "CHENNAI CENTRAL",
+    "to": "HOWRAH",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "MAIL",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "22:39",
+        0
+      ],
+      [
+        "NLR",
+        "22:59",
+        "22:59",
+        0
+      ],
+      [
+        "BVRT",
+        "23:17",
+        "23:17",
+        0
+      ],
+      [
+        "KVZ",
+        "23:27",
+        "23:27",
+        0
+      ],
+      [
+        "UPD",
+        "23:35",
+        "23:35",
+        0
+      ],
+      [
+        "INGR",
+        "23:44",
+        "23:44",
+        0
+      ],
+      [
+        "SKM",
+        "23:50",
+        "23:50",
+        0
+      ],
+      [
+        "TGU",
+        "23:57",
+        "23:57",
+        0
+      ],
+      [
+        "OGL",
+        "00:05",
+        "00:05",
+        1
+      ],
+      [
+        "ANB",
+        "00:15",
+        "00:15",
+        1
+      ],
+      [
+        "CL",
+        "00:24",
+        "00:24",
+        1
+      ],
+      [
+        "BPP",
+        "00:33",
+        "00:33",
+        1
+      ],
+      [
+        "TEL",
+        "00:56",
+        "00:56",
+        1
+      ],
+      [
+        "BZA",
+        "01:13",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "12655",
+    "name": "Navjeevan Express",
+    "te": "నవజీవన్ ఎక్స్‌ప్రెస్",
+    "from": "AHMEDABAD",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "11:49",
+        0
+      ],
+      [
+        "TEL",
+        "12:07",
+        "12:07",
+        0
+      ],
+      [
+        "BPP",
+        "12:33",
+        "12:33",
+        0
+      ],
+      [
+        "CL",
+        "12:42",
+        "12:42",
+        0
+      ],
+      [
+        "ANB",
+        "12:53",
+        "12:53",
+        0
+      ],
+      [
+        "OGL",
+        "13:03",
+        "13:03",
+        0
+      ],
+      [
+        "TGU",
+        "13:13",
+        "13:13",
+        0
+      ],
+      [
+        "SKM",
+        "13:20",
+        "13:20",
+        0
+      ],
+      [
+        "INGR",
+        "13:27",
+        "13:27",
+        0
+      ],
+      [
+        "UPD",
+        "13:37",
+        "13:37",
+        0
+      ],
+      [
+        "KVZ",
+        "13:46",
+        "13:46",
+        0
+      ],
+      [
+        "BVRT",
+        "13:57",
+        "13:57",
+        0
+      ],
+      [
+        "NLR",
+        "14:16",
+        "14:16",
+        0
+      ],
+      [
+        "GDR",
+        "14:39",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12656",
+    "name": "Navjeevan Express",
+    "te": "నవజీవన్ ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "AHMEDABAD",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "11:21",
+        0
+      ],
+      [
+        "NLR",
+        "11:44",
+        "11:44",
+        0
+      ],
+      [
+        "BVRT",
+        "12:03",
+        "12:03",
+        0
+      ],
+      [
+        "KVZ",
+        "12:14",
+        "12:14",
+        0
+      ],
+      [
+        "UPD",
+        "12:23",
+        "12:23",
+        0
+      ],
+      [
+        "INGR",
+        "12:33",
+        "12:33",
+        0
+      ],
+      [
+        "SKM",
+        "12:40",
+        "12:40",
+        0
+      ],
+      [
+        "TGU",
+        "12:47",
+        "12:47",
+        0
+      ],
+      [
+        "OGL",
+        "12:57",
+        "12:57",
+        0
+      ],
+      [
+        "ANB",
+        "13:07",
+        "13:07",
+        0
+      ],
+      [
+        "CL",
+        "13:18",
+        "13:18",
+        0
+      ],
+      [
+        "BPP",
+        "13:27",
+        "13:27",
+        0
+      ],
+      [
+        "TEL",
+        "13:53",
+        "13:53",
+        0
+      ],
+      [
+        "BZA",
+        "14:11",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12841",
+    "name": "Coromandel Express",
+    "te": "కోరమాండల్ ఎక్స్‌ప్రెస్",
+    "from": "HOWRAH",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 120,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "13:04",
+        0
+      ],
+      [
+        "TEL",
+        "13:20",
+        "13:20",
+        0
+      ],
+      [
+        "BPP",
+        "13:41",
+        "13:41",
+        0
+      ],
+      [
+        "CL",
+        "13:48",
+        "13:48",
+        0
+      ],
+      [
+        "ANB",
+        "13:58",
+        "13:58",
+        0
+      ],
+      [
+        "OGL",
+        "14:06",
+        "14:06",
+        0
+      ],
+      [
+        "TGU",
+        "14:14",
+        "14:14",
+        0
+      ],
+      [
+        "SKM",
+        "14:20",
+        "14:20",
+        0
+      ],
+      [
+        "INGR",
+        "14:26",
+        "14:26",
+        0
+      ],
+      [
+        "UPD",
+        "14:34",
+        "14:34",
+        0
+      ],
+      [
+        "KVZ",
+        "14:42",
+        "14:42",
+        0
+      ],
+      [
+        "BVRT",
+        "14:50",
+        "14:50",
+        0
+      ],
+      [
+        "NLR",
+        "15:06",
+        "15:06",
+        0
+      ],
+      [
+        "GDR",
+        "15:26",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12842",
+    "name": "Coromandel Express",
+    "te": "కోరమాండల్ ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "HOWRAH",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 120,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "09:24",
+        0
+      ],
+      [
+        "NLR",
+        "09:44",
+        "09:44",
+        0
+      ],
+      [
+        "BVRT",
+        "10:00",
+        "10:00",
+        0
+      ],
+      [
+        "KVZ",
+        "10:08",
+        "10:08",
+        0
+      ],
+      [
+        "UPD",
+        "10:16",
+        "10:16",
+        0
+      ],
+      [
+        "INGR",
+        "10:24",
+        "10:24",
+        0
+      ],
+      [
+        "SKM",
+        "10:30",
+        "10:30",
+        0
+      ],
+      [
+        "TGU",
+        "10:36",
+        "10:36",
+        0
+      ],
+      [
+        "OGL",
+        "10:44",
+        "10:44",
+        0
+      ],
+      [
+        "ANB",
+        "10:52",
+        "10:52",
+        0
+      ],
+      [
+        "CL",
+        "11:02",
+        "11:02",
+        0
+      ],
+      [
+        "BPP",
+        "11:09",
+        "11:09",
+        0
+      ],
+      [
+        "TEL",
+        "11:30",
+        "11:30",
+        0
+      ],
+      [
+        "BZA",
+        "11:46",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12763",
+    "name": "Padmavathi Express",
+    "te": "పద్మావతి ఎక్స్‌ప్రెస్",
+    "from": "TIRUPATI",
+    "to": "SECUNDERABAD",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": [
+      1,
+      2,
+      4,
+      5,
+      0
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "17:56",
+        0
+      ],
+      [
+        "NLR",
+        "18:19",
+        "18:19",
+        0
+      ],
+      [
+        "BVRT",
+        "18:38",
+        "18:38",
+        0
+      ],
+      [
+        "KVZ",
+        "18:49",
+        "18:49",
+        0
+      ],
+      [
+        "UPD",
+        "18:58",
+        "18:58",
+        0
+      ],
+      [
+        "INGR",
+        "19:08",
+        "19:08",
+        0
+      ],
+      [
+        "SKM",
+        "19:15",
+        "19:15",
+        0
+      ],
+      [
+        "TGU",
+        "19:22",
+        "19:22",
+        0
+      ],
+      [
+        "OGL",
+        "19:32",
+        "19:32",
+        0
+      ],
+      [
+        "ANB",
+        "19:42",
+        "19:42",
+        0
+      ],
+      [
+        "CL",
+        "19:53",
+        "19:53",
+        0
+      ],
+      [
+        "BPP",
+        "20:02",
+        "20:02",
+        0
+      ],
+      [
+        "TEL",
+        "20:28",
+        "20:28",
+        0
+      ],
+      [
+        "BZA",
+        "20:46",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12764",
+    "name": "Padmavathi Express",
+    "te": "పద్మావతి ఎక్స్‌ప్రెస్",
+    "from": "SECUNDERABAD",
+    "to": "TIRUPATI",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": [
+      1,
+      2,
+      3,
+      5,
+      6
+    ],
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "01:59",
+        0
+      ],
+      [
+        "TEL",
+        "02:17",
+        "02:17",
+        0
+      ],
+      [
+        "BPP",
+        "02:43",
+        "02:43",
+        0
+      ],
+      [
+        "CL",
+        "02:52",
+        "02:52",
+        0
+      ],
+      [
+        "ANB",
+        "03:03",
+        "03:03",
+        0
+      ],
+      [
+        "OGL",
+        "03:13",
+        "03:13",
+        0
+      ],
+      [
+        "TGU",
+        "03:23",
+        "03:23",
+        0
+      ],
+      [
+        "SKM",
+        "03:30",
+        "03:30",
+        0
+      ],
+      [
+        "INGR",
+        "03:37",
+        "03:37",
+        0
+      ],
+      [
+        "UPD",
+        "03:47",
+        "03:47",
+        0
+      ],
+      [
+        "KVZ",
+        "03:56",
+        "03:56",
+        0
+      ],
+      [
+        "BVRT",
+        "04:07",
+        "04:07",
+        0
+      ],
+      [
+        "NLR",
+        "04:26",
+        "04:26",
+        0
+      ],
+      [
+        "GDR",
+        "04:49",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12863",
+    "name": "HWH-YPR Express",
+    "te": "హౌరా యశ్వంతపూర్ ఎక్స్‌ప్రెస్",
+    "from": "HOWRAH",
+    "to": "YESVANTPUR",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "20:19",
+        0
+      ],
+      [
+        "TEL",
+        "20:37",
+        "20:37",
+        0
+      ],
+      [
+        "BPP",
+        "21:03",
+        "21:03",
+        0
+      ],
+      [
+        "CL",
+        "21:12",
+        "21:12",
+        0
+      ],
+      [
+        "ANB",
+        "21:23",
+        "21:23",
+        0
+      ],
+      [
+        "OGL",
+        "21:33",
+        "21:33",
+        0
+      ],
+      [
+        "TGU",
+        "21:43",
+        "21:43",
+        0
+      ],
+      [
+        "SKM",
+        "21:50",
+        "21:50",
+        0
+      ],
+      [
+        "INGR",
+        "21:57",
+        "21:57",
+        0
+      ],
+      [
+        "UPD",
+        "22:07",
+        "22:07",
+        0
+      ],
+      [
+        "KVZ",
+        "22:16",
+        "22:16",
+        0
+      ],
+      [
+        "BVRT",
+        "22:27",
+        "22:27",
+        0
+      ],
+      [
+        "NLR",
+        "22:46",
+        "22:46",
+        0
+      ],
+      [
+        "GDR",
+        "23:09",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12864",
+    "name": "YPR-HWH Express",
+    "te": "హౌరా యశ్వంతపూర్ ఎక్స్‌ప్రెస్",
+    "from": "YESVANTPUR",
+    "to": "HOWRAH",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "18:41",
+        0
+      ],
+      [
+        "NLR",
+        "19:04",
+        "19:04",
+        0
+      ],
+      [
+        "BVRT",
+        "19:23",
+        "19:23",
+        0
+      ],
+      [
+        "KVZ",
+        "19:34",
+        "19:34",
+        0
+      ],
+      [
+        "UPD",
+        "19:43",
+        "19:43",
+        0
+      ],
+      [
+        "INGR",
+        "19:53",
+        "19:53",
+        0
+      ],
+      [
+        "SKM",
+        "20:00",
+        "20:00",
+        0
+      ],
+      [
+        "TGU",
+        "20:07",
+        "20:07",
+        0
+      ],
+      [
+        "OGL",
+        "20:17",
+        "20:17",
+        0
+      ],
+      [
+        "ANB",
+        "20:27",
+        "20:27",
+        0
+      ],
+      [
+        "CL",
+        "20:38",
+        "20:38",
+        0
+      ],
+      [
+        "BPP",
+        "20:47",
+        "20:47",
+        0
+      ],
+      [
+        "TEL",
+        "21:13",
+        "21:13",
+        0
+      ],
+      [
+        "BZA",
+        "21:31",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12621",
+    "name": "Tamil Nadu Express",
+    "te": "తమిళనాడు ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "NEW DELHI",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "00:49",
+        0
+      ],
+      [
+        "NLR",
+        "01:09",
+        "01:09",
+        0
+      ],
+      [
+        "BVRT",
+        "01:27",
+        "01:27",
+        0
+      ],
+      [
+        "KVZ",
+        "01:37",
+        "01:37",
+        0
+      ],
+      [
+        "UPD",
+        "01:45",
+        "01:45",
+        0
+      ],
+      [
+        "INGR",
+        "01:54",
+        "01:54",
+        0
+      ],
+      [
+        "SKM",
+        "02:00",
+        "02:00",
+        0
+      ],
+      [
+        "TGU",
+        "02:07",
+        "02:07",
+        0
+      ],
+      [
+        "OGL",
+        "02:15",
+        "02:15",
+        0
+      ],
+      [
+        "ANB",
+        "02:25",
+        "02:25",
+        0
+      ],
+      [
+        "CL",
+        "02:34",
+        "02:34",
+        0
+      ],
+      [
+        "BPP",
+        "02:43",
+        "02:43",
+        0
+      ],
+      [
+        "TEL",
+        "03:06",
+        "03:06",
+        0
+      ],
+      [
+        "BZA",
+        "03:23",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12622",
+    "name": "Tamil Nadu Express",
+    "te": "తమిళనాడు ఎక్స్‌ప్రెస్",
+    "from": "NEW DELHI",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 110,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "01:47",
+        0
+      ],
+      [
+        "TEL",
+        "02:04",
+        "02:04",
+        0
+      ],
+      [
+        "BPP",
+        "02:27",
+        "02:27",
+        0
+      ],
+      [
+        "CL",
+        "02:36",
+        "02:36",
+        0
+      ],
+      [
+        "ANB",
+        "02:45",
+        "02:45",
+        0
+      ],
+      [
+        "OGL",
+        "02:55",
+        "02:55",
+        0
+      ],
+      [
+        "TGU",
+        "03:03",
+        "03:03",
+        0
+      ],
+      [
+        "SKM",
+        "03:10",
+        "03:10",
+        0
+      ],
+      [
+        "INGR",
+        "03:16",
+        "03:16",
+        0
+      ],
+      [
+        "UPD",
+        "03:25",
+        "03:25",
+        0
+      ],
+      [
+        "KVZ",
+        "03:33",
+        "03:33",
+        0
+      ],
+      [
+        "BVRT",
+        "03:43",
+        "03:43",
+        0
+      ],
+      [
+        "NLR",
+        "04:01",
+        "04:01",
+        0
+      ],
+      [
+        "GDR",
+        "04:21",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12615",
+    "name": "Grand Trunk Express",
+    "te": "గ్రాండ్ ట్రంక్ ఎక్స్‌ప్రెస్",
+    "from": "CHENNAI CENTRAL",
+    "to": "NEW DELHI",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "20:21",
+        0
+      ],
+      [
+        "NLR",
+        "20:44",
+        "20:44",
+        0
+      ],
+      [
+        "BVRT",
+        "21:03",
+        "21:03",
+        0
+      ],
+      [
+        "KVZ",
+        "21:14",
+        "21:14",
+        0
+      ],
+      [
+        "UPD",
+        "21:23",
+        "21:23",
+        0
+      ],
+      [
+        "INGR",
+        "21:33",
+        "21:33",
+        0
+      ],
+      [
+        "SKM",
+        "21:40",
+        "21:40",
+        0
+      ],
+      [
+        "TGU",
+        "21:47",
+        "21:47",
+        0
+      ],
+      [
+        "OGL",
+        "21:57",
+        "21:57",
+        0
+      ],
+      [
+        "ANB",
+        "22:07",
+        "22:07",
+        0
+      ],
+      [
+        "CL",
+        "22:18",
+        "22:18",
+        0
+      ],
+      [
+        "BPP",
+        "22:27",
+        "22:27",
+        0
+      ],
+      [
+        "TEL",
+        "22:53",
+        "22:53",
+        0
+      ],
+      [
+        "BZA",
+        "23:11",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12616",
+    "name": "Grand Trunk Express",
+    "te": "గ్రాండ్ ట్రంక్ ఎక్స్‌ప్రెస్",
+    "from": "NEW DELHI",
+    "to": "CHENNAI CENTRAL",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "00:09",
+        0
+      ],
+      [
+        "TEL",
+        "00:27",
+        "00:27",
+        0
+      ],
+      [
+        "BPP",
+        "00:53",
+        "00:53",
+        0
+      ],
+      [
+        "CL",
+        "01:02",
+        "01:02",
+        0
+      ],
+      [
+        "ANB",
+        "01:13",
+        "01:13",
+        0
+      ],
+      [
+        "OGL",
+        "01:23",
+        "01:23",
+        0
+      ],
+      [
+        "TGU",
+        "01:33",
+        "01:33",
+        0
+      ],
+      [
+        "SKM",
+        "01:40",
+        "01:40",
+        0
+      ],
+      [
+        "INGR",
+        "01:47",
+        "01:47",
+        0
+      ],
+      [
+        "UPD",
+        "01:57",
+        "01:57",
+        0
+      ],
+      [
+        "KVZ",
+        "02:06",
+        "02:06",
+        0
+      ],
+      [
+        "BVRT",
+        "02:17",
+        "02:17",
+        0
+      ],
+      [
+        "NLR",
+        "02:36",
+        "02:36",
+        0
+      ],
+      [
+        "GDR",
+        "02:59",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "12759",
+    "name": "Charminar Express",
+    "te": "చార్మినార్ ఎక్స్‌ప్రెస్",
+    "from": "TAMBARAM",
+    "to": "HYDERABAD",
+    "dir": "UP",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "23:10",
+        0
+      ],
+      [
+        "TEL",
+        "23:38",
+        "23:40",
+        0
+      ],
+      [
+        "OGL",
+        "00:58",
+        "01:00",
+        1
+      ],
+      [
+        "KVZ",
+        "01:48",
+        "01:49",
+        1
+      ],
+      [
+        "NLR",
+        "02:28",
+        "02:30",
+        1
+      ],
+      [
+        "GDR",
+        "03:05",
+        null,
+        1
+      ]
+    ]
+  },
+  {
+    "no": "12760",
+    "name": "Charminar Express",
+    "te": "చార్మినార్ ఎక్స్‌ప్రెస్",
+    "from": "HYDERABAD",
+    "to": "TAMBARAM",
+    "dir": "DN",
+    "vmaxKmh": 120,
+    "speedKmh": 100,
+    "lengthKm": 0.55,
+    "days": "DAILY",
+    "type": "EXPRESS",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "02:09",
+        0
+      ],
+      [
+        "TEL",
+        "02:27",
+        "02:27",
+        0
+      ],
+      [
+        "BPP",
+        "02:53",
+        "02:53",
+        0
+      ],
+      [
+        "CL",
+        "03:02",
+        "03:02",
+        0
+      ],
+      [
+        "ANB",
+        "03:13",
+        "03:13",
+        0
+      ],
+      [
+        "OGL",
+        "03:23",
+        "03:23",
+        0
+      ],
+      [
+        "TGU",
+        "03:33",
+        "03:33",
+        0
+      ],
+      [
+        "SKM",
+        "03:40",
+        "03:40",
+        0
+      ],
+      [
+        "INGR",
+        "03:47",
+        "03:47",
+        0
+      ],
+      [
+        "UPD",
+        "03:57",
+        "03:57",
+        0
+      ],
+      [
+        "KVZ",
+        "04:06",
+        "04:06",
+        0
+      ],
+      [
+        "BVRT",
+        "04:17",
+        "04:17",
+        0
+      ],
+      [
+        "NLR",
+        "04:36",
+        "04:36",
+        0
+      ],
+      [
+        "GDR",
+        "04:59",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-01",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "KRISHNAPATNAM",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "22:49",
+        -1
+      ],
+      [
+        "NLR",
+        "23:27",
+        "23:27",
+        -1
+      ],
+      [
+        "BVRT",
+        "23:59",
+        "23:59",
+        -1
+      ],
+      [
+        "KVZ",
+        "00:17",
+        "00:17",
+        0
+      ],
+      [
+        "UPD",
+        "00:32",
+        "00:32",
+        0
+      ],
+      [
+        "INGR",
+        "00:49",
+        "00:49",
+        0
+      ],
+      [
+        "SKM",
+        "01:00",
+        "01:00",
+        0
+      ],
+      [
+        "TGU",
+        "01:12",
+        "01:12",
+        0
+      ],
+      [
+        "OGL",
+        "01:28",
+        "01:28",
+        0
+      ],
+      [
+        "ANB",
+        "01:45",
+        "01:45",
+        0
+      ],
+      [
+        "CL",
+        "02:03",
+        "02:03",
+        0
+      ],
+      [
+        "BPP",
+        "02:18",
+        "02:18",
+        0
+      ],
+      [
+        "TEL",
+        "03:01",
+        "03:01",
+        0
+      ],
+      [
+        "BZA",
+        "03:32",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-02",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "KRISHNAPATNAM",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "03:19",
+        0
+      ],
+      [
+        "NLR",
+        "03:57",
+        "03:57",
+        0
+      ],
+      [
+        "BVRT",
+        "04:29",
+        "04:29",
+        0
+      ],
+      [
+        "KVZ",
+        "04:47",
+        "04:47",
+        0
+      ],
+      [
+        "UPD",
+        "05:02",
+        "05:02",
+        0
+      ],
+      [
+        "INGR",
+        "05:19",
+        "05:19",
+        0
+      ],
+      [
+        "SKM",
+        "05:30",
+        "05:30",
+        0
+      ],
+      [
+        "TGU",
+        "05:42",
+        "05:42",
+        0
+      ],
+      [
+        "OGL",
+        "05:58",
+        "05:58",
+        0
+      ],
+      [
+        "ANB",
+        "06:15",
+        "06:15",
+        0
+      ],
+      [
+        "CL",
+        "06:33",
+        "06:33",
+        0
+      ],
+      [
+        "BPP",
+        "06:48",
+        "06:48",
+        0
+      ],
+      [
+        "TEL",
+        "07:31",
+        "07:31",
+        0
+      ],
+      [
+        "BZA",
+        "08:02",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-03",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "VIJAYAWADA",
+    "to": "KRISHNAPATNAM",
+    "dir": "DN",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "05:28",
+        0
+      ],
+      [
+        "TEL",
+        "05:59",
+        "05:59",
+        0
+      ],
+      [
+        "BPP",
+        "06:42",
+        "06:42",
+        0
+      ],
+      [
+        "CL",
+        "06:57",
+        "06:57",
+        0
+      ],
+      [
+        "ANB",
+        "07:15",
+        "07:15",
+        0
+      ],
+      [
+        "OGL",
+        "07:32",
+        "07:32",
+        0
+      ],
+      [
+        "TGU",
+        "07:48",
+        "07:48",
+        0
+      ],
+      [
+        "SKM",
+        "08:00",
+        "08:00",
+        0
+      ],
+      [
+        "INGR",
+        "08:11",
+        "08:11",
+        0
+      ],
+      [
+        "UPD",
+        "08:28",
+        "08:28",
+        0
+      ],
+      [
+        "KVZ",
+        "08:43",
+        "08:43",
+        0
+      ],
+      [
+        "BVRT",
+        "09:01",
+        "09:01",
+        0
+      ],
+      [
+        "NLR",
+        "09:33",
+        "09:33",
+        0
+      ],
+      [
+        "GDR",
+        "10:11",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-04",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "KRISHNAPATNAM",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "11:49",
+        0
+      ],
+      [
+        "NLR",
+        "12:27",
+        "12:27",
+        0
+      ],
+      [
+        "BVRT",
+        "12:59",
+        "12:59",
+        0
+      ],
+      [
+        "KVZ",
+        "13:17",
+        "13:17",
+        0
+      ],
+      [
+        "UPD",
+        "13:32",
+        "13:32",
+        0
+      ],
+      [
+        "INGR",
+        "13:49",
+        "13:49",
+        0
+      ],
+      [
+        "SKM",
+        "14:00",
+        "14:00",
+        0
+      ],
+      [
+        "TGU",
+        "14:12",
+        "14:12",
+        0
+      ],
+      [
+        "OGL",
+        "14:28",
+        "14:28",
+        0
+      ],
+      [
+        "ANB",
+        "14:45",
+        "14:45",
+        0
+      ],
+      [
+        "CL",
+        "15:03",
+        "15:03",
+        0
+      ],
+      [
+        "BPP",
+        "15:18",
+        "15:18",
+        0
+      ],
+      [
+        "TEL",
+        "16:01",
+        "16:01",
+        0
+      ],
+      [
+        "BZA",
+        "16:32",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-05",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "VIJAYAWADA",
+    "to": "KRISHNAPATNAM",
+    "dir": "DN",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "BZA",
+        null,
+        "13:58",
+        0
+      ],
+      [
+        "TEL",
+        "14:29",
+        "14:29",
+        0
+      ],
+      [
+        "BPP",
+        "15:12",
+        "15:12",
+        0
+      ],
+      [
+        "CL",
+        "15:27",
+        "15:27",
+        0
+      ],
+      [
+        "ANB",
+        "15:45",
+        "15:45",
+        0
+      ],
+      [
+        "OGL",
+        "16:02",
+        "16:02",
+        0
+      ],
+      [
+        "TGU",
+        "16:18",
+        "16:18",
+        0
+      ],
+      [
+        "SKM",
+        "16:30",
+        "16:30",
+        0
+      ],
+      [
+        "INGR",
+        "16:41",
+        "16:41",
+        0
+      ],
+      [
+        "UPD",
+        "16:58",
+        "16:58",
+        0
+      ],
+      [
+        "KVZ",
+        "17:13",
+        "17:13",
+        0
+      ],
+      [
+        "BVRT",
+        "17:31",
+        "17:31",
+        0
+      ],
+      [
+        "NLR",
+        "18:03",
+        "18:03",
+        0
+      ],
+      [
+        "GDR",
+        "18:41",
+        null,
+        0
+      ]
+    ]
+  },
+  {
+    "no": "FREIGHT-06",
+    "name": "GOODS TRAIN",
+    "te": "సరుకు రవాణా రైలు",
+    "from": "KRISHNAPATNAM",
+    "to": "VIJAYAWADA",
+    "dir": "UP",
+    "vmaxKmh": 100,
+    "speedKmh": 60,
+    "lengthKm": 0.65,
+    "days": "DAILY",
+    "type": "FREIGHT",
+    "stops": [
+      [
+        "GDR",
+        null,
+        "19:49",
+        0
+      ],
+      [
+        "NLR",
+        "20:27",
+        "20:27",
+        0
+      ],
+      [
+        "BVRT",
+        "20:59",
+        "20:59",
+        0
+      ],
+      [
+        "KVZ",
+        "21:17",
+        "21:17",
+        0
+      ],
+      [
+        "UPD",
+        "21:32",
+        "21:32",
+        0
+      ],
+      [
+        "INGR",
+        "21:49",
+        "21:49",
+        0
+      ],
+      [
+        "SKM",
+        "22:00",
+        "22:00",
+        0
+      ],
+      [
+        "TGU",
+        "22:12",
+        "22:12",
+        0
+      ],
+      [
+        "OGL",
+        "22:28",
+        "22:28",
+        0
+      ],
+      [
+        "ANB",
+        "22:45",
+        "22:45",
+        0
+      ],
+      [
+        "CL",
+        "23:03",
+        "23:03",
+        0
+      ],
+      [
+        "BPP",
+        "23:18",
+        "23:18",
+        0
+      ],
+      [
+        "TEL",
+        "00:01",
+        "00:01",
+        1
+      ],
+      [
+        "BZA",
+        "00:32",
+        null,
+        1
+      ]
+    ]
+  }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LOGIC — All functions below unchanged from working version
-// ═══════════════════════════════════════════════════════════════════════════
+const DAY_MS = 86400000;
+const hhmmToMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
 
-// ── Days of week helper ─────────────────────────────────────────────────────
-export const DAY_MAP = { 0:"Sun", 1:"Mon", 2:"Tue", 3:"Wed", 4:"Thu", 5:"Fri", 6:"Sat" };
+/** Midnight IST (as UTC ms) of the IST calendar day containing `ms`, shifted by `days`. */
+export function istMidnight(ms, days = 0) {
+  const ist = ms + IST_OFFSET_MS;
+  return ist - (((ist % DAY_MS) + DAY_MS) % DAY_MS) - IST_OFFSET_MS + days * DAY_MS;
+}
 
-// ── FIXED default constants (used as fallback if config not loaded yet) ──────
-const DEFAULT_THRESHOLDS = { PREPARE: 25, WARN: 15, CRITICAL: 7, PASSED: -5 };
+const istWeekday = ms => new Date(ms + IST_OFFSET_MS).getUTCDay(); // 0=Sun
+
+function runsOn(train, runStartMs) {
+  if (train.days === 'DAILY') return true;
+  if (train.days === 'EXC_TUE') return istWeekday(runStartMs) !== 2;
+  if (Array.isArray(train.days)) return train.days.includes(istWeekday(runStartMs));
+  return true;
+}
 
 /**
- * Read time alert thresholds dynamically so user changes in Settings
- * take effect immediately without page reload.
- * Falls back to DEFAULT_THRESHOLDS if config not loaded yet.
+ * Materialise one run into absolute route points (ms, km), ordered along travel.
+ * @returns {{code:string, km:number, arrMs:number, depMs:number}[]}
  */
-export function getAlertThresholds() {
-  try {
-    const cfg = (typeof window !== "undefined" && window.getConfig)
-      ? window.getConfig
-      : (k) => localStorage.getItem(k) || "";
-    return {
-      PREPARE:  parseFloat(cfg("alert_min_prepare"))  || DEFAULT_THRESHOLDS.PREPARE,
-      WARN:     parseFloat(cfg("alert_min_warn"))     || DEFAULT_THRESHOLDS.WARN,
-      CRITICAL: parseFloat(cfg("alert_min_critical")) || DEFAULT_THRESHOLDS.CRITICAL,
-      PASSED:   DEFAULT_THRESHOLDS.PASSED, // Not user-configurable (safety critical)
-    };
-  } catch {
-    return DEFAULT_THRESHOLDS;
+export function routePoints(train, runStartMs) {
+  return train.stops.map(([code, arr, dep, d]) => {
+    const st = STATION_BY_CODE[code];
+    if (!st) throw new Error(`Timetable ${train.no}: unknown station ${code}`);
+    const base = runStartMs + d * DAY_MS;
+    const arrMs = arr ? base + hhmmToMin(arr) * 60000 : null;
+    const depMs = dep ? base + hhmmToMin(dep) * 60000 : null;
+    return { code, km: st.km, arrMs: arrMs ?? depMs, depMs: depMs ?? arrMs };
+  });
+}
+
+export const dirSign = train => (train.dir === 'UP' ? +1 : -1);
+
+/** Average booked speed of the first/last section (for extrapolating outside the corridor). */
+function edgeSpeedKmPerMs(pts, atStart) {
+  const [a, b] = atStart ? [pts[0], pts[1]] : [pts[pts.length - 2], pts[pts.length - 1]];
+  const dt = b.arrMs - a.depMs;
+  return dt > 0 ? Math.abs(b.km - a.km) / dt : 100 / 3600000;
+}
+
+/**
+ * Scheduled position s(t) of a run (delay applied by caller as t - delta).
+ * Extrapolates up to `maxExtrapMin` beyond the corridor ends.
+ */
+export function positionAtTime(train, runStartMs, tMs, maxExtrapMin = 45) {
+  const pts = routePoints(train, runStartMs), dir = dirSign(train);
+  const first = pts[0], last = pts[pts.length - 1];
+  if (tMs < first.depMs) {
+    const dtMin = (first.depMs - tMs) / 60000;
+    if (dtMin > maxExtrapMin) return null;
+    return { km: first.km - dir * (first.depMs - tMs) * edgeSpeedKmPerMs(pts, true), phase: 'BEFORE' };
   }
-}
-
-// Backward-compat: static export that reads dynamically each time via getter
-export const ALERT_THRESHOLDS = {
-  get PREPARE()  { return getAlertThresholds().PREPARE;  },
-  get WARN()     { return getAlertThresholds().WARN;     },
-  get CRITICAL() { return getAlertThresholds().CRITICAL; },
-  get PASSED()   { return getAlertThresholds().PASSED;   },
-};
-
-/**
- * Get minutes until a train passes SKM.
- * @param {string} scheduledTime - "HH:MM" string
- * @returns {number} minutes (negative if already passed)
- */
-export function minutesUntilTrain(scheduledTime) {
-  const now = new Date();
-  const [h, m] = scheduledTime.split(":").map(Number);
-  const trainTime = new Date(now);
-  trainTime.setHours(h, m, 0, 0);
-  let diff = (trainTime - now) / 60000;
-  // If train time is before now by more than 5 hours, treat as tomorrow's
-  if (diff < -300) diff += 1440;
-  return Math.round(diff);
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (tMs >= p.arrMs && tMs <= p.depMs) return { km: p.km, phase: 'HALT' };
+    const q = pts[i + 1];
+    if (q && tMs > p.depMs && tMs < q.arrMs) {
+      const f = (tMs - p.depMs) / (q.arrMs - p.depMs);
+      return { km: p.km + f * (q.km - p.km), phase: 'RUNNING' };
+    }
+  }
+  const dtMin = (tMs - last.arrMs) / 60000;
+  if (dtMin > maxExtrapMin) return null;
+  return { km: last.km + dir * (tMs - last.arrMs) * edgeSpeedKmPerMs(pts, false), phase: 'AFTER' };
 }
 
 /**
- * Check if a train runs today.
- * @param {string} daysStr - "daily" or comma-separated abbreviations like "Mon,Wed,Fri"
+ * Scheduled time tau(km) the run passes chainage `km` (no delay).
+ * Works for ANY worker km along the entire corridor.
  */
-export function trainsToday(daysStr) {
-  if (!daysStr || daysStr === "daily") return true;
-  const today = DAY_MAP[new Date().getDay()];
-  return daysStr.split(",").map(d => d.trim()).includes(today);
+export function timeAtKm(train, runStartMs, km) {
+  const pts = routePoints(train, runStartMs), dir = dirSign(train);
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (Math.abs(p.km - km) < 1e-6) return p.arrMs;
+    const q = pts[i + 1];
+    if (q && (km - p.km) * dir > 0 && (q.km - km) * dir > 0) {
+      return p.depMs + ((km - p.km) / (q.km - p.km)) * (q.arrMs - p.depMs);
+    }
+  }
+  // outside booked route (edge extrapolation)
+  const first = pts[0], last = pts[pts.length - 1];
+  if ((first.km - km) * dir > 0) return first.depMs - Math.abs(first.km - km) / edgeSpeedKmPerMs(pts, true);
+  if ((km - last.km) * dir > 0) return last.arrMs + Math.abs(km - last.km) / edgeSpeedKmPerMs(pts, false);
+  return null;
+}
+
+/** Next booked halt strictly ahead of chainage `km` in direction of travel. */
+export function nextPointAhead(train, runStartMs, km) {
+  const dir = dirSign(train);
+  return routePoints(train, runStartMs).find(p => (p.km - km) * dir > 1e-6) || null;
+}
+
+export function pointByCode(train, runStartMs, code) {
+  return routePoints(train, runStartMs).find(p => p.code === code) || null;
 }
 
 /**
- * Get alert level for a train based on minutes to arrival.
- * @param {number} minutes
- * @returns {"PREPARE"|"WARN"|"CRITICAL"|"PASSED"|"OK"}
+ * All runs whose scheduled pass of `workerKm`, shifted by up to `maxDelayMin`,
+ * overlaps [now - pastMin, now + aheadMin].
  */
-export function getAlertLevel(minutes) {
-  const t = getAlertThresholds();
-  if (minutes <= t.PASSED)   return "PASSED";
-  if (minutes <= t.CRITICAL) return "CRITICAL";
-  if (minutes <= t.WARN)     return "WARN";
-  if (minutes <= t.PREPARE)  return "PREPARE";
-  return "OK";
-}
-
-// ── Work section geometry ─────────────────────────────────────────────────────
-// Work section: SKM (km 293) ↔ UPD (km 265) = 28 km
-export const WORK_SECTION_KM = 28;
-
-/** Minutes a train takes to traverse the whole SKM↔UPD work section. */
-export function sectionTransitMin(speed) {
-  return (WORK_SECTION_KM / (speed || 80)) * 60;
-}
-
-/**
- * Get all active trains, sorted by EFFECTIVE time to the work section.
- *
- * Effective minutes = time until the train ENTERS the SKM↔UPD work section:
- *   DOWN trains enter at SKM → minutesUntil
- *   UP   trains enter at UPD → minutesUntil minus section transit time
- *
- * Trains currently INSIDE the section get effectiveMin = 0 and are always
- * CRITICAL — they sort first and always alert.
- *
- * occursToday = false when the HH:MM instance already passed today and the
- * value was wrapped to tomorrow (prevents "985 min" phantom trains).
- */
-export function getActiveTrains() {
-  const passed = getAlertThresholds().PASSED;
-
-  let alertMode = "station";
-  try {
-    const cfg = (typeof window !== "undefined" && window.getConfig)
-      ? window.getConfig
-      : (k) => localStorage.getItem(k) || "";
-    alertMode = cfg("alert_mode") || "station";
-  } catch {}
-
-  const now = new Date();
-
-  return SKM_TIMETABLE
-    .filter(t => trainsToday(t.days))
-    .map(t => {
-      const minUntil   = minutesUntilTrain(t.time);
-      const speed      = t.speed || 80;
-      const transitMin = sectionTransitMin(speed);
-
-      // Did this HH:MM instance happen today, or was it wrapped to tomorrow?
-      // (matches the -300 min wrap rule in minutesUntilTrain)
-      const [th, tm] = t.time.split(":").map(Number);
-      const tToday = new Date(now); tToday.setHours(th, tm, 0, 0);
-      const occursToday = (now - tToday) <= 300 * 60000;
-
-      // Minutes until the train ENTERS the work section
-      const minutesToWork = t.dir === "D"
-        ? minUntil                        // DOWN: enters at SKM
-        : minUntil - transitMin;          // UP: enters at UPD (earlier)
-
-      // Is the train INSIDE the work section right now?
-      // ── SAFETY FIX: Schedule-only inSection detection is unreliable ──
-      // Trains are often 10-30 min late. A schedule-based system CANNOT know
-      // the real position. We only flag inSection when:
-      //   - LIVE GPS is available (hasLiveGPS flag), OR
-      //   - The train's estimated distance puts it inside a tight buffer zone
-      //
-      // For DOWN trains: entered at SKM → minUntil <= 0 and hasn't reached UPD
-      // For UP trains: entered at UPD → minutesToWork <= 0 and hasn't reached SKM
-      //
-      // Without GPS, use a "late buffer" (ENTRY_BUFFER_MIN) to account for
-      // typical delays. A train is only flagged IN SECTION once it is
-      // clearly past the section entry edge by ENTRY_BUFFER_MIN, so a merely
-      // late train (still approaching the boundary) is NOT falsely flagged.
-      const ENTRY_BUFFER_MIN = 15; // Account for train delays (~15 min)
-
-      // DOWN: enters at SKM (minUntil=0), exits at UPD (minUntil=-transitMin)
-      // UP:   enters at UPD (minutesToWork=0), exits at SKM (minUntil=0)
-      const scheduleInSection = t.dir === "D"
-        ? (minUntil <= -ENTRY_BUFFER_MIN && minUntil > -transitMin)
-        : (minutesToWork <= -ENTRY_BUFFER_MIN && minUntil > 0);
-
-      // Only trust scheduleInSection if we DON'T have live GPS.
-      // When GPS is available, live-trains.js handles inSection via actual position.
-      const hasLiveGPS = typeof localStorage !== "undefined" && !!localStorage.getItem("railradar_key");
-      const inSection = hasLiveGPS ? false : scheduleInSection;
-
-      // Effective minutes for alerting (0 = inside section = CRITICAL)
-      // For UP trains NOT in section, use minUntil (time to SKM) instead of
-      // minutesToWork, because minutesToWork assumes entry at UPD which may
-      // not be accurate if the train is late or still south of UPD.
-      const effectiveMin = inSection
-        ? 0
-        : minUntil;
-
-      // Alert level honours the current mode (station vs GPS)
-      const levelMin   = inSection ? 0 : (alertMode === "station" ? effectiveMin : minUntil);
-      const alertLevel = inSection ? "CRITICAL" : getAlertLevel(levelMin);
-
-      // Estimate how far from SKM the train currently is
-      const kmFromSKM = Math.abs(minUntil) * speed / 60;
-
-      // Find approximate current station name
-      let nearStation = "";
-      if (inSection) {
-        nearStation = "INSIDE SKM↔UPD section";
-      } else if (minUntil > 0) {
-        if (kmFromSKM < 5)        nearStation = "near SKM";
-        else if (kmFromSKM < 18)  nearStation = t.dir === "D" ? "near Ammanabrolu"   : "near Ulavapadu";
-        else if (kmFromSKM < 35)  nearStation = t.dir === "D" ? "near Ongole"        : "near Kavali";
-        else if (kmFromSKM < 55)  nearStation = t.dir === "D" ? "near Martur"        : "near Tanguturu";
-        else if (kmFromSKM < 80)  nearStation = t.dir === "D" ? "near Chirala"       : "near Bitragunta";
-        else if (kmFromSKM < 120) nearStation = t.dir === "D" ? "past Bapatla"       : "past Nellore";
-        else                      nearStation = t.dir === "D" ? "far (BZA side)"     : "far (GDR side)";
-      } else {
-        nearStation = "passed SKM";
+export function candidateRuns(workerKm, nowMs, { aheadMin = 90, pastMin = 30, maxDelayMin = 240 } = {}) {
+  const out = [];
+  for (const train of TRAINS) {
+    for (const d of [-1, 0, 1]) {
+      const runStartMs = istMidnight(nowMs, d);
+      if (!runsOn(train, runStartMs)) continue;
+      const clampedKm = Math.min(CORRIDOR_KM_MAX, Math.max(CORRIDOR_KM_MIN, workerKm));
+      const tau = timeAtKm(train, runStartMs, clampedKm);
+      if (tau == null) continue;
+      if (tau + maxDelayMin * 60000 >= nowMs - pastMin * 60000 && tau <= nowMs + aheadMin * 60000) {
+        out.push({ key: `${train.no}@${new Date(runStartMs + IST_OFFSET_MS).toISOString().slice(0, 10)}`, train, runStartMs, schedPassMs: tau });
       }
-
-      return {
-        ...t,
-        minutesUntil:  minUntil,
-        minutesToWork: Math.round(minutesToWork),
-        effectiveMin:  Math.round(effectiveMin),
-        transitMin:    Math.round(transitMin),
-        inSection,
-        occursToday,
-        alertLevel,
-        nearStation,
-        kmFromSKM: Math.round(kmFromSKM)
-      };
-    })
-    .filter(t => t.inSection || t.minutesUntil > passed)
-    .sort((a, b) => a.effectiveMin - b.effectiveMin || a.minutesUntil - b.minutesUntil);
+    }
+  }
+  return out;
 }

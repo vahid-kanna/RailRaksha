@@ -8,7 +8,7 @@
  * Cache-first for static assets (icons, manifest).
  */
 
-const CACHE_NAME = 'railraksha-v4.1';
+const CACHE_NAME = 'railraksha-v5.0';
 
 const SHELL_ASSETS = [
   "./",
@@ -22,6 +22,8 @@ const SHELL_ASSETS = [
 
 const DYNAMIC_ASSETS = [
   "./js/app.js",
+  "./js/corridor.js",
+  "./js/gps-tracker.js",
   "./js/config.js",
   "./js/config-keys.js",
   "./js/ai-engine.js",

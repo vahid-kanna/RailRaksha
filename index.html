@@ -223,32 +223,72 @@
   <main id="main-content">
 
     <!-- ════════════════════════════════════════════
-         SCREEN 1: TRAIN PROXIMITY ALERT
+         SCREEN 1: TRAIN PROXIMITY ALERT (RADAR & SAFETY)
     ════════════════════════════════════════════ -->
     <section id="screen-train-alert" class="screen active">
 
-      <!-- Emergency Banner (hidden by default) -->
-      <div id="emergency-banner" class="emergency-banner" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="emergency-icon" aria-hidden="true">
-          <svg><use href="#icon-siren"/></svg>
-        </div>
-        <div class="emergency-text">
-          <div class="emergency-title">CLEAR TRACK NOW!</div>
-          <div class="emergency-subtitle">Train approaching — all workers off!</div>
+      <!-- Telemetry Sub-Bar: GPS + Feed Status -->
+      <div class="top-telemetry-bar">
+        <span id="gps-badge" class="badge-status badge-warn" role="status">
+          <svg class="icon-inline" style="width:12px;height:12px;"><use href="#icon-map-pin"/></svg>
+          <span id="gps-badge-text">ACQUIRING GPS</span>
+        </span>
+        <span id="feed-badge" class="badge-status badge-info">
+          <svg class="icon-inline" style="width:12px;height:12px;"><use href="#icon-radio"/></svg>
+          <span id="feed-badge-text">SCHEDULE ONLY</span>
+        </span>
+      </div>
+
+      <!-- 1-Tap Tactile Track Selector -->
+      <nav class="track-selector-bar" role="radiogroup" aria-label="Active track">
+        <button type="button" class="track-btn" role="radio" data-track="UP" aria-checked="false">
+          <b>UP TRACK</b>
+          <span>BZA ▲ · అప్ లైన్</span>
+        </button>
+        <button type="button" class="track-btn" role="radio" data-track="DN" aria-checked="false">
+          <b>DOWN TRACK</b>
+          <span>GDR ▼ · డౌన్ లైన్</span>
+        </button>
+        <button type="button" class="track-btn" role="radio" data-track="BOTH" aria-checked="true">
+          <b>BOTH TRACKS</b>
+          <span>రెండు లైన్లు</span>
+        </button>
+      </nav>
+
+      <!-- Status Band -->
+      <div class="status-band" aria-live="assertive" aria-atomic="true">
+        <div class="status-band-content">
+          <div id="status-en" class="status-en">NO TRAIN NEAR</div>
+          <div id="status-te" class="status-te" lang="te">సురక్షితం</div>
         </div>
       </div>
 
-      <!-- Status Hero Card ([SEC-01]) -->
-      <div id="track-status-hero" class="track-status-hero status-clear">
-        <div class="hud-corner hud-corner-tl"></div><div class="hud-corner hud-corner-tr"></div>
-        <div class="hud-corner hud-corner-bl"></div><div class="hud-corner hud-corner-br"></div>
-        <div class="module-badge" style="position:absolute;top:8px;left:12px;">[SEC-01] RADAR HUD</div>
-        <div class="status-icon-ring">
-          <span id="status-icon"><svg><use href="#icon-check-circle"/></svg></span>
+      <!-- Primary Threat Card (Elevated Danger HUD) -->
+      <section id="threat" class="primary-threat-card" hidden aria-live="assertive">
+        <div class="threat-header">
+          <div class="threat-id-group">
+            <span class="threat-alert-pill">IMMINENT</span>
+            <span id="t-no" class="threat-train-no">—</span>
+            <span id="t-line" class="threat-line-badge">UP · BZA</span>
+          </div>
+          <span id="t-src" class="threat-source-badge">LIVE GPS</span>
         </div>
-        <div class="status-label" id="status-label">TRACK CLEAR</div>
-        <div class="status-sublabel" id="status-sublabel">Start work session to enable live alerts</div>
-      </div>
+        <div id="t-name" class="threat-train-name">Train Name</div>
+        <div class="threat-telemetry-grid">
+          <div class="threat-cell">
+            <output id="t-dist" class="threat-num">0.0</output>
+            <div class="threat-unit">km away · దూరం</div>
+          </div>
+          <div class="threat-cell">
+            <output id="t-eta" class="threat-num">0:00</output>
+            <div class="threat-unit">earliest arrival · రాక</div>
+          </div>
+        </div>
+        <div class="threat-footer">
+          <span id="t-speed" class="threat-speed">110 km/h</span>
+          <span id="t-more" class="threat-more-count"></span>
+        </div>
+      </section>
 
       <!-- ★ WORK SESSION MEGA BUTTON ★ -->
       <button id="session-mega-btn" class="session-mega-btn session-off" aria-label="Toggle work session">
@@ -260,7 +300,7 @@
             <span class="smb-status-dot dot-off" id="smb-dot"></span>
             <span class="smb-title" id="smb-title">START WORK SESSION</span>
           </div>
-          <div class="smb-sub" id="smb-sub">Tap when you go on track — alerts will activate</div>
+          <div class="smb-sub" id="smb-sub">Tap when on track — enables sirens, audio &amp; live GPS alerts</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:4px;" id="smb-last"></div>
         </div>
         <div class="smb-right" id="smb-right" style="display:none;">
@@ -269,44 +309,75 @@
         </div>
       </button>
 
-      <!-- Live Distance Panel -->
-      <div id="live-distance-panel" class="live-distance-panel">
-        <div class="ldp-row">
-          <span class="ldp-icon"><svg><use href="#icon-radio"/></svg></span>
-          <div class="ldp-content">
-            <div class="ldp-title">Nearest Train Distance</div>
-            <div class="ldp-value dist-safe" id="ldp-distance">Calculating...</div>
-            <div class="ldp-sub" id="ldp-train-name">Waiting for GPS &amp; train data</div>
+      <!-- Emergency Siren Acknowledge Button -->
+      <button id="ack" class="ack-btn" hidden type="button">
+        <svg style="width:20px;height:20px;vertical-align:middle;margin-right:8px;"><use href="#icon-check-circle"/></svg>
+        ACKNOWLEDGE ALARM · సరే (45s)
+      </button>
+
+      <!-- Dual-Rail Live Proximity Radar (SVG) -->
+      <section class="radar-card" aria-label="Proximity radar, 20 km each side">
+        <div class="radar-header">
+          <span>◀ GDR (South)</span>
+          <span id="worker-label" class="radar-worker-coord">Chainage: Locating...</span>
+          <span>BZA (North) ▶</span>
+        </div>
+        <div class="radar-canvas-wrap">
+          <svg viewBox="0 0 1000 140" preserveAspectRatio="none" role="img" class="radar-svg">
+            <line class="rail up" x1="0" x2="1000" y1="40" y2="40"/>
+            <line class="rail dn" x1="0" x2="1000" y1="100" y2="100"/>
+            <!-- 5 km warning boundary (dashed) -->
+            <line class="ring" x1="375" x2="375" y1="10" y2="130"/>
+            <line class="ring" x1="625" x2="625" y1="10" y2="130"/>
+            <!-- 3 km critical danger boundary (red) -->
+            <line class="ring crit" x1="425" x2="425" y1="10" y2="130"/>
+            <line class="ring crit" x1="575" x2="575" y1="10" y2="130"/>
+            <!-- Center worker cursor (YOU) -->
+            <rect class="worker" x="492" y="20" width="16" height="100" rx="3"/>
+            <g id="radar-trains"></g>
+          </svg>
+        </div>
+        <div class="radar-scale">
+          <span>20 km</span><span>5</span><span>3</span><span class="you-tag">YOU</span><span>3</span><span>5</span><span>20 km</span>
+        </div>
+      </section>
+
+      <!-- My Beat / Location Selector Accordion -->
+      <div class="beat-selector-card">
+        <button id="beat-toggle" class="beat-toggle-btn" type="button">
+          <svg style="width:16px;height:16px"><use href="#icon-map-pin"/></svg>
+          <span>WORK BEAT / STATION SELECTOR · నా బీట్</span>
+          <span class="beat-chevron">▼</span>
+        </button>
+        <div id="beat-panel" class="beat-panel" hidden>
+          <div id="beat-grid" class="beat-grid"></div>
+          <div class="nudge-controls">
+            <button id="nudge-minus" class="nudge-btn" type="button">−0.5 km (Towards GDR)</button>
+            <button id="nudge-plus" class="nudge-btn" type="button">+0.5 km (Towards BZA)</button>
           </div>
-          <span class="ldp-badge sched" id="ldp-source-badge">TIMETABLE</span>
         </div>
       </div>
 
-      <!-- Sync Status -->
-      <div class="sync-status-bar">
-        <div id="sync-dot" class="sync-dot online"></div>
-        <div class="sync-text" id="sync-text">Checking train data...</div>
-        <button id="btn-refresh-trains">
-          <svg style="width:12px;height:12px;vertical-align:middle"><use href="#icon-refresh"/></svg>
-        </button>
-      </div>
-
-      <!-- Freight Trains Warning -->
+      <!-- Freight Trains Notice -->
       <div class="freight-info-card">
         <span class="fi-icon"><svg><use href="#icon-truck"/></svg></span>
         <div class="fi-text">
-          <strong>Freight trains are not on NTES.</strong> Always maintain visual lookout on track.
+          <strong>Goods / Freight Trains:</strong> Not timetabled on passenger NTES. Always maintain visual lookout and safety clearance.
         </div>
       </div>
 
-      <!-- Train List -->
-      <div class="trains-section-title">UPCOMING TRAINS AT SINGARAYAKONDA (SKM)</div>
-      <div id="train-list">
-        <div class="empty-state">
-          <div class="es-icon"><svg style="width:44px;height:44px;color:var(--text-muted)"><use href="#icon-train"/></svg></div>
-          <div class="es-title">Loading train schedule...</div>
+      <!-- Corridor Traffic List -->
+      <div class="traffic-section">
+        <div class="traffic-header">
+          <div class="traffic-title">CORRIDOR TRAFFIC <span lang="te">ఇతర రైళ్లు</span></div>
+          <button id="btn-refresh-trains" class="traffic-refresh-btn" aria-label="Refresh trains">
+            <svg style="width:14px;height:14px"><use href="#icon-refresh"/></svg>
+          </button>
         </div>
+        <ul id="ambient" class="ambient-list"></ul>
       </div>
+
+      <p id="bg-warning" hidden class="bg-warning">⚠️ Keep RailRaksha on screen. Mobile browsers may throttle timers when locked.</p>
 
     </section>
 
