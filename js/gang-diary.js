@@ -1,84 +1,92 @@
 /**
- * RailRaksha — Voice-to-Gang-Diary (gang-diary.js)
- * Converts spoken Telugu/English input → structured gang diary entry
- * using Bynara AI (agnes-2.5-flash).
+ * RailRaksha — Voice & Text Gang Diary (gang-diary.js)
+ * Converts spoken or typed Telugu/English notes into a structured
+ * Indian Railways Gang Diary entry with offline IndexedDB persistence.
  */
 
 import { saveDiaryEntry, getDiaryEntries } from './db.js';
-import { callAI, getAISettings } from './ai-engine.js';
+import { callAI } from './ai-engine.js';
 import { Icons } from './icons.js';
 
 let isRecording = false;
 let recognition = null;
 let transcriptionText = "";
-let finalTranscript = "";  // accumulates final results; survives recognition restarts
+let finalTranscript = "";
 let elements = {};
 
 export function initGangDiary(els) {
   elements = els;
+  syncAttendanceDefaults();
   updateDiaryHeader();
   loadTodayEntries();
   updateAttendance();
 
   elements.btnRecord?.addEventListener("click", toggleRecording);
+  elements.btnTypeDiary?.addEventListener("click", openManualInput);
   elements.btnGenerateDiary?.addEventListener("click", generateDiaryEntry);
   elements.btnSaveDiary?.addEventListener("click", saveDiaryToDb);
   elements.btnShareDiary?.addEventListener("click", shareDiaryEntry);
   elements.attendanceInput?.addEventListener("input", updateAttendance);
 }
 
-// ── Date Header ──────────────────────────────────────────────────────────────
+function getGangStrength() {
+  const cfg = window.getConfig || ((k) => localStorage.getItem(k) || "");
+  return Math.max(1, parseInt(cfg("gang_strength") || "25", 10) || 25);
+}
+
+function syncAttendanceDefaults() {
+  const total = getGangStrength();
+  if (elements.attendanceInput) {
+    elements.attendanceInput.max = String(total);
+    if (!elements.attendanceInput.dataset.touched) {
+      elements.attendanceInput.value = String(total);
+    }
+  }
+}
 
 function updateDiaryHeader() {
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
   if (elements.diaryDateText) elements.diaryDateText.textContent = dateStr;
-  const gangNo = localStorage.getItem("gang_no") || "—";
-  const mateName = localStorage.getItem("mate_name") || "—";
-  if (elements.diaryGangInfo) elements.diaryGangInfo.textContent = `Gang ${gangNo} · ${mateName} · SKM Section`;
+  const gangNo = localStorage.getItem("gang_no") || "Gang —";
+  const mateName = localStorage.getItem("mate_name") || "Mate —";
+  const section = localStorage.getItem("section") || "SKM–UPD Section";
+  if (elements.diaryGangInfo) elements.diaryGangInfo.textContent = `${gangNo} · ${mateName} · ${section}`;
 }
-
-// ── Attendance ───────────────────────────────────────────────────────────────
 
 function updateAttendance() {
-  const total = parseInt(localStorage.getItem("gang_strength") || "25");
-  const present = parseInt(elements.attendanceInput?.value || total);
+  const total = getGangStrength();
+  const raw = parseInt(elements.attendanceInput?.value ?? total, 10);
+  const present = Math.max(0, Math.min(total, Number.isFinite(raw) ? raw : total));
+  if (elements.attendanceInput) {
+    elements.attendanceInput.dataset.touched = "1";
+    elements.attendanceInput.value = String(present);
+  }
   const absent = total - present;
   if (elements.attendanceCount) elements.attendanceCount.innerHTML = `${present}<span>/${total} workers</span>`;
-  const pct = (present / total) * 100;
-  if (elements.attendanceBar) elements.attendanceBar.style.width = `${pct}%`;
+  if (elements.attendanceBar) elements.attendanceBar.style.width = `${(present / total) * 100}%`;
   if (elements.attendanceSub) {
-  elements.attendanceSub.textContent = absent > 0
-    ? `${absent} worker${absent > 1 ? "s" : ""} absent today`
-    : "Full attendance today";
+    elements.attendanceSub.textContent = absent > 0
+      ? `${absent} worker${absent > 1 ? "s" : ""} absent today`
+      : "Full attendance today";
   }
 }
 
-// ── Voice Recording (tap-to-start, tap-to-stop) ─────────────────────────────
-// Browsers auto-stop SpeechRecognition on silence/pause. We override this by
-// auto-restarting in onend when the user hasn't tapped stop. This gives a
-// true "tap to start, tap to stop" experience.
-// Text duplication is fixed by rebuilding the full transcript from ALL
-// results (not appending just the delta).
-
 function toggleRecording() {
-  if (isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
+  if (isRecording) stopRecording();
+  else startRecording();
 }
 
 function startRecording() {
   if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-    showTextInputFallback();
+    showToast("Voice recognition unavailable in this browser — type your work details below", "warn");
+    openManualInput();
     return;
   }
-  // Fresh recording session — clear any previous transcript
   finalTranscript = "";
   transcriptionText = "";
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
   recognition.lang = "te-IN";
   recognition.continuous = true;
   recognition.interimResults = true;
@@ -87,61 +95,44 @@ function startRecording() {
     isRecording = true;
     updateRecordBtn(true);
     if (elements.transcriptionCard) elements.transcriptionCard.classList.add("visible");
-    if (elements.transcriptionText && !finalTranscript) {
-      elements.transcriptionText.textContent = "Listening in Telugu... Tap stop when done.";
+    if (elements.transcriptionText) {
+      elements.transcriptionText.textContent = "Listening in Telugu / English… tap stop when finished.";
     }
   };
 
   recognition.onresult = (event) => {
-    // Append ONLY new final results (uses event.resultIndex, not 0).
-    // finalTranscript is module-level so it survives recognition restarts
-    // (which reset event.results), fixing both duplication and data loss.
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
-      if (r.isFinal) {
-        finalTranscript += r[0].transcript + " ";
-      } else {
-        interim += r[0].transcript;
-      }
+      if (r.isFinal) finalTranscript += r[0].transcript + " ";
+      else interim += r[0].transcript;
     }
     transcriptionText = finalTranscript;
     if (elements.transcriptionText) {
-      elements.transcriptionText.textContent = transcriptionText + (interim ? ` ${interim}` : "");
+      elements.transcriptionText.textContent = (transcriptionText + (interim ? ` ${interim}` : "")).trim();
     }
   };
 
   recognition.onerror = (event) => {
-    if (event.error === "network") {
+    if (event.error === "network" || event.error === "service-not-allowed") {
       isRecording = false;
       updateRecordBtn(false);
-      showToast("No internet — try typing your work details below", "warn");
-      showTextInputFallback();
+      showToast("Voice requires internet — switched to manual typing", "warn");
+      openManualInput();
     } else if (event.error === "not-allowed") {
       isRecording = false;
       updateRecordBtn(false);
-      showToast("Please allow microphone access", "warn");
-    } else if (event.error === "no-speech" || event.error === "aborted") {
-      // Normal when user pauses — don't stop. onend will auto-restart.
-      console.log(`Speech recognition: ${event.error} (ignoring, will auto-restart)`);
+      showToast("Microphone permission denied", "warn");
     }
   };
 
   recognition.onend = () => {
-    // If user hasn't tapped stop, auto-restart to keep recording going.
-    // NOTE: finalTranscript persists across restarts, so no text is lost.
     if (isRecording) {
-      try {
-        recognition.start();
-      } catch (e) {
-        // start() can throw if called too quickly after end — retry shortly
-        setTimeout(() => { if (isRecording) { try { recognition.start(); } catch {} } }, 100);
-      }
+      setTimeout(() => { if (isRecording) { try { recognition.start(); } catch {} } }, 120);
     } else {
-      // User tapped stop — finalize
       updateRecordBtn(false);
       if (finalTranscript.trim()) {
-        showToast("Recording stopped — tap Generate Diary", "ok");
+        showToast("Recording complete — tap Generate Gang Diary", "ok");
         if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
       }
     }
@@ -152,99 +143,90 @@ function startRecording() {
 
 function stopRecording() {
   isRecording = false;
-  if (recognition) {
-    try { recognition.stop(); } catch {}
-  }
+  try { recognition?.stop(); } catch {}
   updateRecordBtn(false);
   transcriptionText = finalTranscript;
   if (finalTranscript.trim()) {
-    showToast("Recording stopped — tap Generate Diary", "ok");
+    showToast("Recording stopped — tap Generate Gang Diary", "ok");
     if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
   }
 }
 
 function updateRecordBtn(recording) {
   elements.btnRecord?.classList.toggle("recording", recording);
-  if (elements.voiceTitle) elements.voiceTitle.textContent = recording ? "Tap to stop recording" : "Tap to record in Telugu";
-  if (elements.voiceSub) elements.voiceSub.textContent = recording ? "Recording... speak freely about today's work" : "తెలుగులో మాట్లాడండి";
-  if (elements.micEmoji) elements.micEmoji.innerHTML = recording ? Icons.alertCircle(24, '#EF4444') : Icons.mic(24, '#94A3B8');
+  if (elements.voiceTitle) elements.voiceTitle.textContent = recording ? "Stop Recording" : "Record Today's Work";
+  if (elements.voiceSub) elements.voiceSub.textContent = recording ? "Listening… speak in Telugu or English" : "తెలుగులో మాట్లాడండి — Tap to speak";
+  if (elements.micEmoji) elements.micEmoji.innerHTML = recording ? Icons.alertCircle(20, '#EF4444') : Icons.mic(20, '#E2E8F0');
 }
 
-function showTextInputFallback() {
-  if (elements.textFallback) elements.textFallback.style.display = "block";
+function openManualInput() {
+  if (isRecording) stopRecording();
   if (elements.transcriptionCard) elements.transcriptionCard.classList.add("visible");
   if (elements.transcriptionText) {
-    elements.transcriptionText.innerHTML = `<textarea id="manual-work-input" placeholder="Type today's work details here in Telugu or English..." style="width:100%;background:transparent;border:none;color:#B0C4DE;font-size:13px;resize:vertical;min-height:80px;line-height:1.6;" rows="4"></textarea>`;
+    const existing = transcriptionText.trim();
+    elements.transcriptionText.innerHTML = `<textarea id="manual-work-input" class="manual-diary-textarea" placeholder="Type today's work details in Telugu or English (e.g., Packed 18 sleepers between km 292–293, tightened 30 ERC clips, lookout posted)..." rows="4"></textarea>`;
     const ta = document.getElementById("manual-work-input");
-    ta?.addEventListener("input", () => { transcriptionText = ta.value; });
+    if (ta) {
+      ta.value = existing;
+      ta.focus();
+      ta.addEventListener("input", () => { transcriptionText = ta.value; });
+    }
     if (elements.btnGenerateDiary) elements.btnGenerateDiary.style.display = "flex";
   }
 }
 
-// ── AI Diary Generation ──────────────────────────────────────────────────
-
 async function generateDiaryEntry() {
+  const ta = document.getElementById("manual-work-input");
+  if (ta) transcriptionText = ta.value;
   const text = transcriptionText.trim();
-  if (!text) { showToast("Please record or type work details first", "warn"); return; }
-
-  const aiSettings = getAISettings();
-  if (!aiSettings.apiKey && aiSettings.provider !== "ollama") {
-    showToast("Please configure your AI API key in Settings", "warn");
+  if (!text) {
+    showToast("Record or type today's work details first", "warn");
     return;
   }
 
-  showAnalyzingOverlay(true, "Generating Gang Diary...", "Structuring work details into official format");
+  showAnalyzingOverlay(true, "Structuring Gang Diary", "Formatting official Indian Railways entry...");
 
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
-  const total = parseInt(localStorage.getItem("gang_strength") || "25");
-  const present = parseInt(elements.attendanceInput?.value || total);
+  const total = getGangStrength();
+  const present = parseInt(elements.attendanceInput?.value || total, 10);
   const gangNo = localStorage.getItem("gang_no") || "—";
   const mateName = localStorage.getItem("mate_name") || "—";
-  const section = localStorage.getItem("section") || "Singarayakonda Section, Vijayawada Division";
+  const section = localStorage.getItem("section") || "SKM–UPD, Vijayawada Division";
 
-  const prompt = `You are helping an Indian Railways Gang Mate (Track Maintainer Grade-I) fill out the official Gang Diary.
+  const prompt = `You are formatting an official Indian Railways Gang Diary entry for a Gang Mate (Track Maintainer Grade-I).
 
-Gang Information:
+Gang Details:
 - Date: ${dateStr}
-- Gang Number: ${gangNo}
-- Mate Name: ${mateName}
+- Gang: ${gangNo} | Mate: ${mateName}
 - Section: ${section}
-- Attendance: ${present} present out of ${total} total workers
-- Division: Vijayawada Division, South Central Railway
+- Attendance: ${present}/${total} workers present
 
-The Gang Mate has spoken/typed the following about today's work (may be in Telugu or English, possibly mixed):
+Field Notes (Telugu/English):
 "${text}"
 
-Extract and structure this into official Indian Railways gang diary format. Respond in this exact JSON format:
+Return ONLY this JSON object:
 {
-  "workDone": "Detailed summary of work performed (in English), itemized as bullet points starting with •",
-  "materialsUsed": "List of materials/fittings used (e.g., '6 PSC sleepers, 28 elastic rail clips, 4 fish bolts') or 'Nil' if none",
-  "defectsObserved": "Any track defects or abnormalities observed, or 'Nil'",
-  "safetyMeasures": "Safety precautions taken (e.g., 'Look-out man posted, hand signals maintained')",
-  "specialInstructions": "Any instructions received from PWI/SSE/AEN, or 'Nil'",
-  "remarks": "Any additional remarks for the official diary",
-  "teleguSummary": "One line summary in Telugu script of the day's work"
-}
-
-Keep entries professional, in the style of Indian Railways official records.`;
+  "workDone": "Itemized bullet points starting with • in clear Indian Railways terminology",
+  "materialsUsed": "Materials/fittings used or 'Nil'",
+  "defectsObserved": "Track defects noticed or 'Nil'",
+  "safetyMeasures": "Safety precautions taken (e.g. Lookout man posted, banner flag & hand signals maintained)",
+  "specialInstructions": "Instructions from PWI/SSE/AEN or 'Nil'",
+  "remarks": "Brief official remark",
+  "teluguSummary": "One-sentence summary in Telugu script"
+}`;
 
   try {
-    console.log("Calling AI for Gang Diary generation...");
     const entry = await callAI({ prompt });
-
     if (!entry || typeof entry !== "object" || !entry.workDone) {
-      throw new Error("Invalid response format from AI model");
+      throw new Error("Invalid response format from AI");
     }
-
     showAnalyzingOverlay(false);
     displayDiaryEntry(entry, { dateStr, gangNo, mateName, section, present, total });
-    showToast("Gang Diary generated!", "ok");
-
+    showToast("Gang Diary formatted", "ok");
   } catch (err) {
     showAnalyzingOverlay(false);
     showToast("Generation failed: " + err.message, "error");
-    console.error("AI Error in gang diary:", err);
   }
 }
 
@@ -253,9 +235,9 @@ function displayDiaryEntry(entry, meta) {
   elements.diaryEntryCard.classList.add("visible");
 
   if (elements.entryDate) elements.entryDate.textContent = `Gang Diary — ${meta.dateStr}`;
-  if (elements.entryTime) elements.entryTime.textContent = new Date().toLocaleTimeString("en-IN");
+  if (elements.entryTime) elements.entryTime.textContent = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 
-  setText(elements.entryGang, `Gang ${meta.gangNo} | ${meta.mateName} | ${meta.section}`);
+  setText(elements.entryGang, `${meta.gangNo} · ${meta.mateName} · ${meta.section}`);
   setText(elements.entryAttendance, `${meta.present}/${meta.total} workers present`);
   setText(elements.entryWorkDone, entry.workDone);
   setText(elements.entryMaterials, entry.materialsUsed);
@@ -263,10 +245,15 @@ function displayDiaryEntry(entry, meta) {
   setText(elements.entrySafety, entry.safetyMeasures);
   setText(elements.entrySpecial, entry.specialInstructions);
   setText(elements.entryRemarks, entry.remarks);
-  if (elements.entryTelugu) elements.entryTelugu.textContent = entry.teleguSummary;
+  setText(elements.entryTelugu, entry.teluguSummary || entry.teleguSummary || "—");
 
-  // Store for saving
-  elements.diaryEntryCard.dataset.entry = JSON.stringify({ ...entry, ...meta, rawTranscription: transcriptionText, timestamp: new Date().toISOString() });
+  elements.diaryEntryCard.dataset.entry = JSON.stringify({
+    ...entry,
+    teluguSummary: entry.teluguSummary || entry.teleguSummary || "",
+    ...meta,
+    rawTranscription: transcriptionText,
+    timestamp: new Date().toISOString(),
+  });
 
   if (elements.btnSaveDiary) elements.btnSaveDiary.style.display = "flex";
   if (elements.btnShareDiary) elements.btnShareDiary.style.display = "flex";
@@ -274,14 +261,11 @@ function displayDiaryEntry(entry, meta) {
 
 function setText(el, text) { if (el) el.textContent = text || "—"; }
 
-// ── Save & Share ─────────────────────────────────────────────────────────────
-
 async function saveDiaryToDb() {
   const card = elements.diaryEntryCard;
   if (!card?.dataset.entry) return;
-  const entry = JSON.parse(card.dataset.entry);
-  await saveDiaryEntry(entry);
-  showToast("Diary entry saved!", "ok");
+  await saveDiaryEntry(JSON.parse(card.dataset.entry));
+  showToast("Diary entry saved offline", "ok");
   loadTodayEntries();
 }
 
@@ -289,33 +273,31 @@ async function shareDiaryEntry() {
   const card = elements.diaryEntryCard;
   if (!card?.dataset.entry) return;
   const e = JSON.parse(card.dataset.entry);
-
-  const text = `
-📔 GANG DIARY — ${e.dateStr}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Gang: ${e.gangNo} | Mate: ${e.mateName}
-Section: ${e.section}
-Attendance: ${e.present}/${e.total} workers
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WORK DONE:
-${e.workDone}
-
-MATERIALS USED: ${e.materialsUsed}
-DEFECTS OBSERVED: ${e.defectsObserved}
-SAFETY MEASURES: ${e.safetyMeasures}
-SPECIAL INSTRUCTIONS: ${e.specialInstructions}
-REMARKS: ${e.remarks}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Generated by RailRaksha — AI Safety Platform
-`.trim();
+  const text = [
+    `GANG DIARY — ${e.dateStr}`,
+    `Gang: ${e.gangNo} | Mate: ${e.mateName}`,
+    `Section: ${e.section}`,
+    `Attendance: ${e.present}/${e.total} workers`,
+    "---",
+    "WORK DONE:",
+    e.workDone,
+    `MATERIALS: ${e.materialsUsed}`,
+    `DEFECTS: ${e.defectsObserved}`,
+    `SAFETY: ${e.safetyMeasures}`,
+    `INSTRUCTIONS: ${e.specialInstructions}`,
+    `REMARKS: ${e.remarks}`,
+  ].join("\n");
 
   if (navigator.share) {
-    try { await navigator.share({ title: "Gang Diary Entry", text }); return; } catch {}
+    try { await navigator.share({ title: `Gang Diary — ${e.dateStr}`, text }); return; } catch {}
   }
-  navigator.clipboard?.writeText(text).then(() => showToast("Diary copied to clipboard — send to PWI/SSE", "ok"));
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Diary copied to clipboard", "ok");
+  } catch {
+    showToast("Could not copy — save locally instead", "warn");
+  }
 }
-
-// ── Today's entries summary ───────────────────────────────────────────────────
 
 async function loadTodayEntries() {
   const today = new Date().toISOString().slice(0, 10);
@@ -323,8 +305,25 @@ async function loadTodayEntries() {
   if (elements.todayEntriesCount) {
     elements.todayEntriesCount.textContent = entries.length > 0
       ? `${entries.length} entr${entries.length > 1 ? "ies" : "y"} saved today`
-      : "No entries saved yet today";
+      : "No entries saved today";
   }
+  if (elements.savedEntriesList) {
+    elements.savedEntriesList.innerHTML = entries.map(e => `
+      <div class="saved-diary-item">
+        <div class="saved-diary-meta">
+          <strong>${escapeHtml(e.dateStr || e.date)}</strong>
+          <span>${e.present ?? "—"}/${e.total ?? "—"} present · ${new Date(e.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+        </div>
+        <div class="saved-diary-body">${escapeHtml(e.workDone || e.rawTranscription || "")}</div>
+      </div>
+    `).join("");
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
 }
 
 function showAnalyzingOverlay(show, title = "", sub = "") {

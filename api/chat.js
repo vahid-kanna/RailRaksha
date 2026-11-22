@@ -1,104 +1,134 @@
 /**
- * Vercel Serverless Proxy for Bynara Router API
- * 
- * Handles CORS and keeps the API key secure on the server.
- * Browser calls: POST /api/chat
- * Server forwards to: https://router.bynara.id/v1/chat/completions
+ * Vercel Serverless Proxy for AI Chat & Vision Completions
+ *
+ * Keeps API keys strictly server-side and normalizes CORS.
+ * Supports any OpenAI-compatible provider via environment variables:
+ *   Priority:
+ *     1. AI_API_KEY (+ optional AI_BASE_URL, AI_MODEL)
+ *     2. GEMINI_API_KEY (Google AI Studio OpenAI-compatible endpoint)
+ *     3. OPENROUTER_API_KEY
+ *     4. GROQ_API_KEY
+ *     5. BYNARA_API_KEY
  */
 
-// Vercel function timeout (hobby plan max: 60s)
 export const config = {
   maxDuration: 60,
 };
 
+function resolveProvider() {
+  if (process.env.AI_API_KEY) {
+    return {
+      apiKey: process.env.AI_API_KEY,
+      baseUrl: (process.env.AI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai').replace(/\/+$/, ''),
+      defaultModel: process.env.AI_MODEL || 'gemini-2.5-flash',
+      name: 'custom',
+    };
+  }
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      apiKey: process.env.GEMINI_API_KEY,
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      defaultModel: process.env.AI_MODEL || 'gemini-2.5-flash',
+      name: 'gemini',
+    };
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseUrl: 'https://openrouter.ai/api/v1',
+      defaultModel: process.env.AI_MODEL || 'google/gemini-2.0-flash-001',
+      name: 'openrouter',
+    };
+  }
+  if (process.env.GROQ_API_KEY) {
+    return {
+      apiKey: process.env.GROQ_API_KEY,
+      baseUrl: 'https://api.groq.com/openai/v1',
+      defaultModel: process.env.AI_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct',
+      name: 'groq',
+    };
+  }
+  if (process.env.BYNARA_API_KEY) {
+    return {
+      apiKey: process.env.BYNARA_API_KEY,
+      baseUrl: 'https://router.bynara.id/v1',
+      defaultModel: process.env.AI_MODEL || 'glm-5.3-flash',
+      name: 'bynara',
+    };
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
-  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Handle preflight OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: { message: 'Method not allowed' } });
 
-  // Only allow POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    // Get API key from environment variable
-    const apiKey = process.env.BYNARA_API_KEY;
-    if (!apiKey) {
-      console.error('BYNARA_API_KEY not set in environment');
-      return res.status(500).json({ error: 'API key not configured' });
-    }
-
-    // Try up to 3 times with exponential backoff
-    const maxRetries = 3;
-    let lastError = null;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        // Timeout per attempt: 45s (leaves 15s buffer before Vercel kills us)
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 45000);
-
-        const response = await fetch('https://router.bynara.id/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify(req.body),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          // Don't retry on auth/4xx errors — only retry on 5xx or timeouts
-          if (response.status >= 400 && response.status < 500) {
-            console.error(`Bynara API error ${response.status}:`, JSON.stringify(data).substring(0, 200));
-            return res.status(response.status).json(data);
-          }
-          // 5xx — retryable
-          console.warn(`Bynara returned ${response.status} (attempt ${attempt + 1}/${maxRetries})`);
-          lastError = data;
-        } else {
-          return res.status(200).json(data);
-        }
-      } catch (fetchErr) {
-        if (fetchErr.name === 'AbortError') {
-          console.warn(`Bynara request timed out (attempt ${attempt + 1}/${maxRetries})`);
-          lastError = { error: { message: 'Upstream API timed out' } };
-        } else {
-          console.error(`Fetch error (attempt ${attempt + 1}):`, fetchErr.message);
-          lastError = { error: { message: fetchErr.message } };
-        }
-      }
-
-      // Wait before retry (2s, 5s, no wait on last attempt)
-      if (attempt < maxRetries - 1) {
-        const waitMs = attempt === 0 ? 2000 : 5000;
-        await new Promise(r => setTimeout(r, waitMs));
-      }
-    }
-
-    // All retries exhausted
-    console.error('All retries exhausted for Bynara API');
-    return res.status(504).json({
+  const provider = resolveProvider();
+  if (!provider) {
+    return res.status(503).json({
       error: {
-        message: 'AI service is slow or unavailable. Please try again in a moment.',
-        code: 'upstream_timeout'
-      }
+        message: 'Server AI provider is not configured. Add GEMINI_API_KEY (or AI_API_KEY) in hosting environment variables, or set a custom key in Settings.',
+        code: 'ai_not_configured',
+      },
     });
-
-  } catch (error) {
-    console.error('Proxy error:', error);
-    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
+
+  const endpoint = provider.baseUrl.endsWith('/chat/completions')
+    ? provider.baseUrl
+    : `${provider.baseUrl}/chat/completions`;
+
+  const body = { ...(req.body || {}) };
+  // Use server-configured model unless the caller explicitly passed a non-default override
+  if (!body.model || body.model === 'auto' || body.model === 'agnes-2.5-flash') {
+    body.model = provider.defaultModel;
+  }
+
+  const maxRetries = 2;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${provider.apiKey}`,
+      };
+      if (provider.name === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://railraksha.tech';
+        headers['X-Title'] = 'RailRaksha';
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return res.status(200).json(data);
+
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        return res.status(response.status).json(data);
+      }
+      lastError = data;
+    } catch (err) {
+      clearTimeout(timeout);
+      lastError = { error: { message: err.name === 'AbortError' ? 'Upstream AI request timed out' : err.message } };
+    }
+
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, attempt === 0 ? 1500 : 3500));
+    }
+  }
+
+  return res.status(504).json(lastError || {
+    error: { message: 'AI service is temporarily unavailable. Please try again.', code: 'upstream_timeout' },
+  });
 }

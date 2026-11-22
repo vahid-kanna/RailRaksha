@@ -1,114 +1,102 @@
 /**
- * RailRaksha — Single AI Engine (ai-engine.js)
+ * RailRaksha — Unified AI Engine (ai-engine.js)
  *
- * Text + Image → Bynara Router (agnes-2.5-flash) — text + vision in one model.
- * Users can override via Settings.
+ * Routing priority:
+ *   1. If the user entered a personal API key in Settings → call their configured
+ *      OpenAI-compatible endpoint directly.
+ *   2. Otherwise → call the server-side proxy at `/api/chat` (works on both
+ *      Cloudflare Pages and Vercel), falling back to `https://railraksha.vercel.app/api/chat`
+ *      if same-origin `/api/chat` returns 404.
  */
+
+const FALLBACK_PROXY_URL = "https://railraksha.vercel.app/api/chat";
 
 export function getAISettings() {
   const cfg = window.getConfig || ((key) => localStorage.getItem(key) || "");
   return {
     provider: cfg("ai_provider") || "openai_compatible",
     apiKey:   cfg("ai_api_key") || "",
-    baseUrl:  cfg("ai_base_url") || "https://router.bynara.id/v1",
-    model:    cfg("ai_model") || "agnes-2.5-flash",
+    baseUrl:  cfg("ai_base_url") || "https://generativelanguage.googleapis.com/v1beta/openai",
+    model:    cfg("ai_model") || "auto",
   };
 }
 
 /**
- * Universal AI Completion function — one path for text and images.
+ * Universal AI Completion function — supports text and vision inputs.
  */
 export async function callAI({ prompt, imageBase64 = null, mimeType = "image/jpeg" }) {
   const settings = getAISettings();
-  if (!settings.apiKey) {
-    throw new Error("Missing AI API Key. Please configure your key in Settings.");
-  }
-  return await callOpenAICompatibleAPI({
-    apiKey: settings.apiKey,
-    baseUrl: settings.baseUrl,
-    model: settings.model,
-    prompt,
-    imageBase64,
-    mimeType
-  });
-}
+  const hasUserKey = Boolean(settings.apiKey && settings.apiKey.trim());
 
-/**
- * OpenAI-Compatible API Handler (Groq) — text + vision
- */
-async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBase64, mimeType, retryCount = 0 }) {
-  let cleanBaseUrl = (baseUrl || "https://router.bynara.id/v1").replace(/\/+$/, "");
-  if (!cleanBaseUrl.endsWith("/chat/completions") && !cleanBaseUrl.endsWith("/completions")) {
-    cleanBaseUrl += "/chat/completions";
-  }
-
-  // Use serverless proxy when in browser (avoids CORS issues)
-  // The proxy at /api/chat forwards to Bynara with server-side API key
-  const useProxy = typeof window !== 'undefined' && window.location?.hostname?.includes('vercel');
-  const fetchUrl = useProxy ? '/api/chat' : cleanBaseUrl;
-
-  const activeModel = model || "agnes-2.5-flash";
-  console.log(`Calling AI API | Model: ${activeModel} | Image: ${!!imageBase64} | URL: ${fetchUrl} ${useProxy ? '(via proxy)' : ''}`);
-
-  const headers = { "Content-Type": "application/json" };
-  // Only send Authorization header when NOT using proxy (proxy uses server-side key)
-  if (apiKey && !useProxy) headers["Authorization"] = `Bearer ${apiKey}`;
-
-  // Vision: user content becomes [text, image_url] parts (OpenAI-compatible format)
   const userContent = imageBase64
     ? [
         { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: `data:${mimeType || "image/jpeg"};base64,${imageBase64}` } }
+        { type: "image_url", image_url: { url: `data:${mimeType || "image/jpeg"};base64,${imageBase64}` } },
       ]
     : prompt;
 
   const requestBody = {
-    model: activeModel,
+    model: settings.model || "auto",
     messages: [
       {
         role: "system",
-        content: "You are an expert AI assistant for Indian Railways track safety and engineering. Return structured JSON when requested. Do not show your reasoning — output the final answer only."
+        content: "You are an expert assistant for Indian Railways Permanent Way track safety and engineering (IRPWM / GR). Return structured JSON when requested. Output the final answer only without chain-of-thought.",
       },
-      { role: "user", content: userContent }
+      { role: "user", content: userContent },
     ],
     temperature: 0.2,
-    // ponytail: 4096 not 1500 — qwen3.6 is a thinking model; reasoning tokens
-    // share this budget and a low cap truncated answers (the old image bug).
-    max_tokens: 4096
+    max_tokens: 2048,
   };
 
+  // Direct call if user explicitly supplied their own API key in Settings
+  if (hasUserKey) {
+    let url = (settings.baseUrl || "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, "");
+    if (!url.endsWith("/chat/completions") && !url.endsWith("/completions")) {
+      url += "/chat/completions";
+    }
+    if (!requestBody.model || requestBody.model === "auto") {
+      requestBody.model = url.includes("googleapis.com") ? "gemini-2.5-flash" : "gpt-4o-mini";
+    }
+    return executeRequest(url, requestBody, {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${settings.apiKey.trim()}`,
+    });
+  }
+
+  // Otherwise use server-side proxy (same-origin first, then Vercel mirror on 404)
+  const isLocal = typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+  const primaryProxy = isLocal ? FALLBACK_PROXY_URL : "/api/chat";
+
+  try {
+    return await executeRequest(primaryProxy, requestBody, { "Content-Type": "application/json" });
+  } catch (err) {
+    if (primaryProxy === "/api/chat" && err.status === 404) {
+      return await executeRequest(FALLBACK_PROXY_URL, requestBody, { "Content-Type": "application/json" });
+    }
+    throw err;
+  }
+}
+
+async function executeRequest(fetchUrl, requestBody, headers, retryCount = 0) {
   const response = await fetch(fetchUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(90000)
+    signal: AbortSignal.timeout(60000),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const errMsg = errorData.error?.message || errorData.message || `AI API returned status ${response.status}`;
-    const errCode = errorData.error?.code || '';
-    const errType = errorData.error?.type || '';
+    const errMsg = errorData.error?.message || errorData.message || `AI service returned HTTP ${response.status}`;
 
-    // Rate limit retry with exponential backoff (up to 2 retries)
-    if ((response.status === 429 || errCode === 'rate_limit_exceeded') && retryCount < 2) {
-      const waitMatch = errMsg.match(/(\d+(?:\.\d+)?)\s*s/);
-      const waitSec = waitMatch ? parseFloat(waitMatch[1]) + 1 : (retryCount === 0 ? 22 : 45);
-      console.warn(`Rate limited, waiting ${waitSec}s before retry ${retryCount + 1}/2...`);
-      await new Promise(r => setTimeout(r, waitSec * 1000));
-      return callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBase64, mimeType, retryCount: retryCount + 1 });
+    if (response.status === 429 && retryCount < 1) {
+      await new Promise(r => setTimeout(r, 4000));
+      return executeRequest(fetchUrl, requestBody, headers, retryCount + 1);
     }
 
-    // Over capacity / server error retry (500/503 with "over capacity" message)
-    if ((response.status === 500 || response.status === 503) && /over capacity/i.test(errMsg) && retryCount < 2) {
-      const waitSec = retryCount === 0 ? 15 : 30;
-      console.warn(`Server over capacity, waiting ${waitSec}s before retry ${retryCount + 1}/2...`);
-      await new Promise(r => setTimeout(r, waitSec * 1000));
-      return callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBase64, mimeType, retryCount: retryCount + 1 });
-    }
-
-    console.error("AI API Error:", errorData);
-    throw new Error(errMsg);
+    const err = new Error(errMsg);
+    err.status = response.status;
+    throw err;
   }
 
   const data = await response.json();
@@ -116,22 +104,14 @@ async function callOpenAICompatibleAPI({ apiKey, baseUrl, model, prompt, imageBa
   return parseJSONOrText(stripThinking(rawText));
 }
 
-/**
- * Remove  reasoning blocks emitted by thinking models (Qwen3).
- * Handles both ``, ``, and `` variants.
- */
 function stripThinking(text) {
   if (!text) return text;
   return text.replace(/<\s*think[^>]*>[\s\S]*?<\s*\/\s*think\s*>/gi, "").trim();
 }
 
-/**
- * Helper to safely extract JSON from AI response
- */
 function parseJSONOrText(rawText) {
   if (!rawText) throw new Error("Empty response from AI model");
 
-  // Try extracting json code block
   const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || rawText.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
@@ -141,18 +121,4 @@ function parseJSONOrText(rawText) {
 
   try { return JSON.parse(rawText.trim()); }
   catch { return { rawText }; }
-}
-
-// ── Self-check (run: node --experimental-vm-modules ai-engine.js or in browser console) ──
-export function _selfTest() {
-  const cases = [
-    ["\n\n```json\n{\"a\":1}\n```", { a: 1 }],
-    ["{\"defectType\":\"Cracked Rail\"}", { defectType: "Cracked Rail" }],
-    ["Plain text answer", { rawText: "Plain text answer" }],
-  ];
-  for (const [input, expected] of cases) {
-    const got = parseJSONOrText(stripThinking(input));
-    console.assert(JSON.stringify(got) === JSON.stringify(expected), "FAIL:", input, got);
-  }
-  console.log("ai-engine self-test passed");
 }

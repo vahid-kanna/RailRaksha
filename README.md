@@ -110,7 +110,6 @@ RailRaksha/
 ├── sw.js                   # Offline caching Service Worker
 ├── vercel.json             # Vercel deployment routing & header rules
 ├── netlify.toml            # Netlify deployment fallback configuration
-├── build-keys.sh           # Deploy-time environment variable injector
 ├── api/
 │   └── chat.js             # Vercel serverless proxy for Bynara Vision AI
 ├── css/
@@ -131,38 +130,65 @@ RailRaksha/
 
 ---
 
-## 🚀 Local Setup & Development
+## 🚀 Setup & Deployment
 
-### 1. Clone the Repository
+RailRaksha is a static PWA with **server-side API proxy routes** for AI and live train status. API keys are never shipped to the browser.
+
+### Prerequisites
+
+- A [Vercel](https://vercel.com) or [Cloudflare Pages](https://pages.cloudflare.com) account
+- At least one AI provider key (Bynara, Groq, OpenRouter, or an OpenAI-compatible endpoint)
+
+### Environment Variables
+
+Set these in your hosting dashboard (never commit them):
+
+| Variable | Service | Required |
+|----------|---------|----------|
+| `BYNARA_API_KEY` | [Bynara](https://ai.bynara.id) | Recommended (primary AI proxy) |
+| `BYNARA_API_URL` | Bynara-compatible endpoint override | Optional (default `https://ai.bynara.id/v1/chat/completions`) |
+| `BYNARA_MODEL` | Bynara model id | Optional (default `agnes-2.5-flash`) |
+| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) | Recommended fallback |
+| `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys) | Optional fallback |
+| `AI_API_URL` | Any OpenAI-compatible chat completions URL | Optional fallback |
+| `AI_API_KEY` | Key for `AI_API_URL` | Optional |
+| `AI_MODEL` | Model for `AI_API_URL` | Optional (default `gpt-4o-mini`) |
+| `OPENWEATHER_KEY` / `OWM_API_KEY` | [OpenWeatherMap](https://openweathermap.org/api) | Optional (weather) |
+| `WEATHERAPI_KEY` | [WeatherAPI](https://www.weatherapi.com) | Optional (weather fallback) |
+
+### Local Development
+
 ```bash
+# 1. Clone the repository
 git clone https://github.com/vahid-kanna/RailRaksha.git
 cd RailRaksha
-```
 
-### 2. Configure Environment Keys (Optional for local testing)
-Copy or generate `js/config-keys.js` with your API keys:
-```javascript
-export const API_KEYS = {
-  bynara:    "YOUR_BYNARA_API_KEY",
-  groq:      "YOUR_GROQ_API_KEY",
-  railradar: "YOUR_RAILRADAR_KEY",
-  owm:       "YOUR_OPENWEATHERMAP_KEY",
-};
-```
-*(Note: Users can also enter their own keys directly within the app's in-browser **⚙️ Settings** modal).*
-
-### 3. Run Locally
-Serve the directory with any static file server:
-```bash
-# Using Python
-python -m http.server 8080
-
-# Using Node / npx
+# 2. Serve the static frontend
 npx serve .
+# Open http://localhost:3000
 ```
-Open `http://localhost:8080` in your browser.
 
----
+For local AI proxy testing, run a platform dev server that executes `/api/*` routes (for example `vercel dev` or Cloudflare Pages dev) and provide the env vars above. The frontend calls `/api/chat`; it does not require browser-stored provider keys.
+
+### Deploy to Vercel
+
+1. Push your code to GitHub
+2. Import the repository in [Vercel Dashboard](https://vercel.com/new)
+3. Add environment variables in **Settings → Environment Variables**
+4. Deploy — `vercel.json` ships the static PWA and `/api/chat`, `/api/live-status` serverless routes
+
+### Deploy to Cloudflare Pages
+
+1. Connect the GitHub repo in Cloudflare Pages
+2. Build command: *(none)*, output directory: `.`
+3. Add the same environment variables in Pages project settings
+4. Deploy — `functions/api/chat.js` and `functions/api/live-status.js` provide the same proxy endpoints
+
+### Security Notes
+
+- Never commit `.env`, `.env.local`, `.env.*.local`, or `*.check.tmp`
+- AI provider keys live only in server env vars; the browser talks to `/api/chat`
+- Rotate any key that was ever exposed in client-side code or screenshots
 
 ## 🌐 Production Deployment
 
@@ -173,7 +199,7 @@ RailRaksha is configured for **Vercel** and **Netlify** with automatic build-tim
    - `GROQ_API_KEY`
    - `RAILRADAR_KEY`
    - `OWM_API_KEY`
-2. The `build-keys.sh` script generates `js/config-keys.js` dynamically during build time.
+2. AI provider keys live in server environment variables and are consumed only by `/api/chat` serverless/Pages routes.
 3. Deployed live with zero downtime at **[railraksha.vercel.app](https://railraksha.vercel.app)**.
 
 ---

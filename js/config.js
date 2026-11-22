@@ -1,61 +1,44 @@
 /**
  * RailRaksha — Central Configuration (config.js)
  *
- * API keys are pre-loaded for your dad — no setup needed.
- * Users can override any value via ⚙️ Settings (protected by password).
- * localStorage values always take priority over these defaults.
- *
- * SECURITY: Keys live in js/config-keys.js (gitignored). On Vercel/Netlify
- * that file is regenerated at deploy time from environment variables by
- * build-keys.sh — real keys never enter the git repo.
+ * Security: No secret API keys are bundled in client-side JS.
+ * Production deployments route AI and live-train requests through server-side
+ * proxies (/api/chat, /api/live-status). Users can optionally override keys
+ * locally in Settings (stored only in their own browser's localStorage).
  */
 
-import { API_KEYS } from './config-keys.js';
-
 export const DEFAULT_CONFIG = {
-  // ── AI Provider (Bynara Router) — one model for text AND image tasks ─────
+  // ── AI Provider (proxied server-side by default; user may override in Settings)
   ai_provider:  "openai_compatible",
-  ai_model:     "agnes-2.5-flash",
-  ai_base_url:  "https://router.bynara.id/v1",
-  ai_api_key:   API_KEYS.bynara,
+  ai_model:     "auto",
+  ai_base_url:  "https://generativelanguage.googleapis.com/v1beta/openai",
+  ai_api_key:   "",
 
-  // ── Live Train Tracking (RailRadar) ────────────────────────────────────────
-  // Free at https://railradar.in/login
-  railradar_key: API_KEYS.railradar,
+  // ── Live Train Tracking (RailRadar — proxied server-side by default)
+  railradar_key: "",
 
-  // ── Weather (OpenWeatherMap) ────────────────────────────────────────────────
-  // Free at https://openweathermap.org/api
-  owm_api_key:  API_KEYS.owm,
+  // ── Weather (Open-Meteo works free with zero key; optional OWM key override)
+  owm_api_key:  "",
 
-  // ── Gang Identity ──────────────────────────────────────────────────────────
-  mate_name:    "",
-  gang_no:      "",
+  // ── Gang Identity
+  mate_name:     "",
+  gang_no:       "",
   gang_strength: "25",
-  section:      "SKM-OGL",
+  section:       "SKM–UPD, Vijayawada Div.",
 
-  // ── Alert Distance Thresholds (km) ─────────────────────────────────────────
-  // These control GPS-based live alerts.
-  // CRITICAL = all workers must clear the track immediately
-  // WARN     = move all tools and equipment off the track
-  // PREPARE  = heads up, a train is approaching
-  alert_dist_critical: "4",    // km — default 4 km
-  alert_dist_warn:     "8",    // km — default 8 km
-  alert_dist_prepare:  "15",   // km — default 15 km
+  // ── Alert Distance Thresholds (km)
+  alert_dist_critical: "3",
+  alert_dist_warn:     "8",
+  alert_dist_prepare:  "15",
 
-  // ── Alert Time Thresholds (minutes, schedule-based) ────────────────────────
-  alert_min_critical:  "7",    // minutes until train reaches SKM
-  alert_min_warn:      "15",
-  alert_min_prepare:   "25",
+  // ── Alert Time Thresholds (minutes)
+  alert_min_critical:  "3",
+  alert_min_warn:      "5",
+  alert_min_prepare:   "10",
 
-  // ── Alert Mode ──────────────────────────────────────────────────────────────
-  // "station" = alerts based on train crossing neighboring stations (default)
-  // "gps"     = alerts based on live GPS distance (requires location permission)
-  alert_mode:  "station",
-
-  // ── Work Section ───────────────────────────────────────────────────────────
-  // The section your gang works on. Trains approaching THIS section trigger alerts.
-  work_station_a: "SKM",   // Singarayakonda (north end, BZA side)
-  work_station_b: "UPD",   // Ulavapadu (south end, GDR side)
+  // ── Work Section
+  work_station_a: "SKM",
+  work_station_b: "UPD",
 };
 
 /**
@@ -71,32 +54,36 @@ export function getConfig(key) {
 
 /** Number helper — returns parsed float or the fallback default */
 export function getConfigNum(key) {
-  return parseFloat(getConfig(key)) || parseFloat(DEFAULT_CONFIG[key]) || 0;
+  const val = parseFloat(getConfig(key));
+  return Number.isFinite(val) ? val : (parseFloat(DEFAULT_CONFIG[key]) || 0);
 }
 
 /**
- * Apply all DEFAULT_CONFIG values to localStorage on first run.
- * Only fills keys that are currently empty — never overwrites user preferences.
+ * Migrate legacy settings and fill missing defaults once.
+ * Never overwrites valid user-entered identity or custom keys.
  */
 export function applyDefaultsOnce() {
-  let configVersion = localStorage.getItem("_config_version");
-  if (configVersion !== "2.5") {
-    // Force-update AI settings to Bynara Router — model changed to agnes-2.5-flash in v2.5.
-    // Only overwrite if the stored values are old defaults or missing.
-    const oldProvider = localStorage.getItem("ai_provider");
+  const configVersion = localStorage.getItem("_config_version");
+  if (configVersion !== "6.0") {
     const oldModel = localStorage.getItem("ai_model");
-    if (!oldProvider || oldProvider === "gemini" || oldModel === "llama-3.3-70b-versatile" || oldModel === "gemini-2.5-flash" || oldModel === "qwen/qwen3.6-27b" || oldModel === "mistral-medium-3-5" || !oldModel) {
-      localStorage.setItem("ai_provider",  DEFAULT_CONFIG.ai_provider);
-      localStorage.setItem("ai_model",     DEFAULT_CONFIG.ai_model);
-      localStorage.setItem("ai_base_url",  DEFAULT_CONFIG.ai_base_url);
-      localStorage.setItem("ai_api_key",   DEFAULT_CONFIG.ai_api_key);
+    const legacyModels = new Set([
+      "agnes-2.5-flash",
+      "llama-3.3-70b-versatile",
+      "qwen/qwen3.6-27b",
+      "mistral-medium-3-5",
+    ]);
+    if (!oldModel || legacyModels.has(oldModel)) {
+      localStorage.setItem("ai_model", DEFAULT_CONFIG.ai_model);
     }
-    // Remove the now-unused separate image AI settings
+    const oldBase = localStorage.getItem("ai_base_url");
+    if (!oldBase || oldBase.includes("router.bynara.id")) {
+      localStorage.setItem("ai_base_url", DEFAULT_CONFIG.ai_base_url);
+    }
     localStorage.removeItem("image_ai_provider");
     localStorage.removeItem("image_ai_model");
     localStorage.removeItem("image_ai_api_key");
     localStorage.removeItem("gemini_api_key");
-    localStorage.setItem("_config_version", "2.5");
+    localStorage.setItem("_config_version", "6.0");
   }
 
   for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
