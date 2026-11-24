@@ -1,12 +1,13 @@
 /**
- * RailRaksha — Offline-First Service Worker (v6.0)
+ * RailRaksha — Offline-First Service Worker (v7.0)
  *
- * - Network-only for /api/* and non-GET requests (never caches live feeds or AI POSTs)
- * - Stale-While-Revalidate for HTML, CSS, and JS modules (instant offline boot + fresh updates)
+ * - Network-only for /api/* and non-GET requests (never caches live train feeds or AI POSTs)
+ * - Stale-While-Revalidate for HTML, CSS, and JS modules with ignoreSearch matching
+ *   so query-string cache busters never break first-boot offline loads
  * - Cache-First for static icons and manifest
  */
 
-const CACHE_NAME = 'railraksha-v6.0';
+const CACHE_NAME = 'railraksha-v7.0';
 
 const SHELL_ASSETS = [
   './',
@@ -37,15 +38,21 @@ const DYNAMIC_ASSETS = [
 
 const DYNAMIC_PATHS = new Set(DYNAMIC_ASSETS.map(a => a.replace(/^\.\//, '/')));
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
+self.addEventListener('install', (event) => {
+  event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll([...SHELL_ASSETS, ...DYNAMIC_ASSETS]))
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
@@ -53,31 +60,30 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-  // Never intercept non-GET requests (e.g. POST /api/chat)
-  if (e.request.method !== 'GET') return;
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
 
-  const url = new URL(e.request.url);
+  const url = new URL(event.request.url);
 
-  // Never cache cross-origin API calls or same-origin /api/* endpoints
+  // Never intercept cross-origin calls or same-origin /api/* edge endpoints
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) {
     return;
   }
 
-  const isDynamic = DYNAMIC_PATHS.has(url.pathname) || url.pathname === '/css/style.css';
-  const isHTML = url.pathname === '/' || url.pathname.endsWith('/index.html');
+  const cleanPath = url.pathname;
+  const isDynamic = DYNAMIC_PATHS.has(cleanPath) || cleanPath === '/css/style.css';
+  const isHTML = cleanPath === '/' || cleanPath.endsWith('/index.html') || event.request.mode === 'navigate';
 
-  // Stale-While-Revalidate for app shell & JS/CSS
   if (isDynamic || isHTML) {
-    e.respondWith(
+    event.respondWith(
       caches.open(CACHE_NAME).then(cache =>
-        cache.match(e.request).then(cached => {
-          const networkPromise = fetch(e.request)
+        cache.match(event.request, { ignoreSearch: true }).then(cached => {
+          const networkPromise = fetch(event.request)
             .then(response => {
-              if (response.ok) cache.put(e.request, response.clone());
+              if (response.ok) cache.put(event.request, response.clone());
               return response;
             })
-            .catch(() => cached);
+            .catch(() => cached || (isHTML ? cache.match('./index.html') : new Response('Offline', { status: 503 })));
           return cached || networkPromise;
         })
       )
@@ -85,22 +91,18 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for static assets (icons, manifest)
-  e.respondWith(
-    caches.match(e.request).then(cached => {
+  event.respondWith(
+    caches.match(event.request, { ignoreSearch: true }).then(cached => {
       if (cached) return cached;
-      return fetch(e.request)
+      return fetch(event.request)
         .then(response => {
           if (response.ok) {
             const cloned = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, cloned));
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
           }
           return response;
         })
-        .catch(() => {
-          if (e.request.mode === 'navigate') return caches.match('./index.html');
-          return new Response('Offline', { status: 503 });
-        });
+        .catch(() => new Response('Offline', { status: 503 }));
     })
   );
 });

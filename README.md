@@ -1,217 +1,80 @@
-﻿# RailRaksha — Railway Track Safety & Field Documentation PWA
+# RailRaksha (రైల్ రక్ష) — Offline-First Railway Track Safety & Field PWA
 
-<div align="center">
+[![Live on Cloudflare](https://img.shields.io/badge/Live-railraksha.tech-F59E0B?style=flat-square&logo=cloudflare&logoColor=white)](https://railraksha.tech)
+[![Architecture](https://img.shields.io/badge/Stack-Vanilla%20ES%20Modules%20%2B%20IndexedDB-131822?style=flat-square)](#architecture)
+[![PWA](https://img.shields.io/badge/PWA-Offline--First%20Service%20Worker-22C55E?style=flat-square)](#offline-first-guarantees)
+[![Bilingual](https://img.shields.io/badge/UI-English%20%7C%20Telugu-0284C7?style=flat-square)](#core-modules)
 
-[![Status](https://img.shields.io/badge/Status-Live%20on%20Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://railraksha.vercel.app)
-[![PWA](https://img.shields.io/badge/PWA-100%25%20Offline--First-FF6F00?style=for-the-badge&logo=pwa&logoColor=white)](https://railraksha.vercel.app)
-[![Vision AI](https://img.shields.io/badge/AI%20Engine-Bynara%20Vision-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)](https://railraksha.vercel.app)
-[![Domain](https://img.shields.io/badge/Domain-Indian%20Railways%20Safety-138808?style=for-the-badge&logo=train&logoColor=white)](https://railraksha.vercel.app)
-[![Language](https://img.shields.io/badge/Multilingual-Telugu%20%7C%20English-blue?style=for-the-badge)](https://railraksha.vercel.app)
-[![License](https://img.shields.io/badge/License-Proprietary%20%2F%20Public%20Safety-red?style=for-the-badge)](#-license--intellectual-property)
+**Live App:** [https://railraksha.tech](https://railraksha.tech)
 
-**AI-Powered Safety, Train Proximity Alerts & Field Documentation Platform for Indian Railways Track Workers.**
+Offline-first field safety and documentation Progressive Web App built for Indian Railways Gang Mates and Track Maintainers on the **Vijayawada (BZA) ↔ Gudur (GDR)** corridor (**Singarayakonda–Ulavapadu / SKM–UPD** section, South Central Railway).
 
-[🚀 Open Live App (`railraksha.vercel.app`)](https://railraksha.vercel.app) • [📱 Installable PWA](https://railraksha.vercel.app) • [📖 Documentation](#-core-modules--features)
-
-</div>
+> **Safety Boundary Notice:** RailRaksha is an independent personal software prototype inspired by real field maintenance work. It is **not** an Indian Railways certified or officially deployed safety instrument. Consumer GPS drift, parallel-track ambiguity, and unscheduled goods/freight trains mean software can never substitute for visual lookout, dedicated flagmen, or official IRPWM / General Rules protection procedures.
 
 ---
 
-## 🚂 Origin & Real-World Motivation
+## Core Modules
 
-Indian Railways operates one of the largest rail networks in the world, maintained around the clock by track maintainers (Gang Mates and Keymen) working under extreme environmental and safety conditions. Field teams often work in remote block sections with intermittent cellular connectivity, manual paperwork, and high collision risk during active maintenance.
+1. **Corridor Radar & Train Alert Engine (`Alerts`)**
+   - Direction-aware track filtering (`UP · BZA`, `DOWN · GDR`, `BOTH`) with adjacent-line safety cues.
+   - 2-state Along-Track Kalman Filter (`js/gps-tracker.js`) projecting GPS fixes onto continuous corridor chainage, with 14-station manual beat fallback and `±0.5 km` fine nudge.
+   - Delay-corrected position envelope (`kmLead` / `kmNominal` / `kmLag`) across 53 corridor train entries (47 passenger + 6 typical freight paths) (`js/timetable-data.js`) and live RailRadar v1 overlay via Cloudflare Worker (`/api/live-status`).
+   - Built-in **Safety Drill Simulator** (explicitly badged `SIMULATION DRILL — NOT LIVE TRAFFIC`) for crew training and demonstrations.
+   - Persistent IndexedDB **Shift Alert Audit Log** and 1-tap **SOS Line Protection Sheet** (Broad Gauge 600 m / 1200 m detonator diagram, emergency coordinates SMS copy, and quick-dial helplines).
 
-**RailRaksha** was conceptualized and developed from first-hand observations of field operations on the **Singarayakonda–Ulavapadu (SKM–UPD)** section of South Central Railway (SCR), where the creator's father serves as a Gang Mate. It provides track maintainers with a resilient, offline-first digital assistant to protect lives, automate manual logs, and detect track defects using AI.
+2. **Track Defect Reporter (`Defect`)**
+   - Camera capture & upload with client-side JPEG compression (`<= 1280px`).
+   - Multimodal AI Vision classification via Cloudflare Worker (`/api/chat`) mapped to IRPWM codes and speed restrictions.
+   - **100% Offline IRPWM Quick Classifier** with 8 standard railway defect presets so track defects can always be logged, GPS-tagged, filtered, exported, and shared in dead zones.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            RAILRAKSHA ECOSYSTEM                             │
-├──────────────────────┬──────────────────────┬───────────────────────────────┤
-│    RADAR HUD &       │   AI VISION DEFECT   │    MULTILINGUAL GANG DIARY    │
-│  PROXIMITY ALERTS    │      CLASSIFIER      │       (VOICE IN TELUGU)       │
-│  Live Train Alerts   │  IRPWM Code & Action │ Attendance, Materials & Tasks │
-├──────────────────────┴──────────────────────┴───────────────────────────────┤
-│                     100% OFFLINE-FIRST SERVICE WORKER                       │
-│             IndexedDB Storage • Local Timetables • Zero Bloat               │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+3. **Bilingual Voice & Text Gang Diary (`Diary`)**
+   - Telugu (`te-IN`) & English (`en-IN`) speech recognition with non-duplicating result accumulation, always-editable field notes, and 1-tap railway phrase chips.
+   - Attendance stepper synced to configured gang strength and IST (`Asia/Kolkata`) date stamps.
+   - Cloud AI diary formatting with **deterministic Offline Structured Formatter fallback**, persistent IndexedDB log, and `.txt` shift export.
 
----
+4. **Weather & LWR Rail Thermal Stress (`Weather`)**
+   - Free, keyless live telemetry via Open-Meteo (with optional OpenWeatherMap override and IndexedDB offline cache).
+   - Estimates steel **Long Welded Rail (LWR) temperature** against the **IRPWM Para 2.9 65°C (`Td+20°C`) Hot Weather Patrolling** limit, plus monsoon scour and coastal cyclone wind checks.
 
-## 🛡️ Core Modules & Features
+5. **IRPWM & GR Field Manual (`Manual`)**
+   - **14 built-in offline IRPWM / General Rules** cards with category filtering (`Emergency`, `Gauge`, `Track`, `Weather`, `Protection`), instant live search, voice lookup, and online AI fallback for custom queries.
 
-### 1. 🚨 Track Radar HUD & Train Proximity Alert
-- **Dual Monitoring Modes:**
-  - **📡 Station Block Mode:** Tracks train passage across neighboring stations (e.g., SKM ↔ UPD section) for guaranteed alerts even in cellular dead zones.
-  - **📍 GPS Distance Mode:** Real-time distance calculation to oncoming trains with dynamic speed/time estimation.
-- **Visual & Audio Siren Alarms:** Unambiguous full-screen warning banners and acoustic alerts instructing gang crews to clear the track immediately.
-- **Schedule Fallback & Freight Caution:** Blends live NTES/RailRadar feeds with cached offline timetables and explicit visual cautions for unscheduled freight traffic.
-
-### 2. 🔍 AI Vision Track Defect Classifier
-- **On-Device & Cloud Triage:** Photograph or upload track defects (rail fractures, weld cracks, missing ERC clips, ballast voids, sunken joints).
-- **IRPWM Mapping:** Automatically matches visual damage to Indian Railways Permanent Way Manual (**IRPWM**) standard maintenance codes.
-- **Speed Restrictions & Action Plans:** Recommends mandatory speed limits (e.g., Stop Dead, 20 km/h, 30 km/h caution) and instant one-click report sharing with the Section PWI / SSE via WhatsApp.
-
-### 3. 🎙️ Voice-Powered Gang Diary (Telugu & English)
-- **Field Speech Recognition:** Speak daily accomplishments, track kilometers inspected, materials used, and safety precautions in native **Telugu (తెలుగు)** or English.
-- **Automatic Diary Structuring:** Transforms spoken field logs into a standardized, official Indian Railways Gang Diary with automatic attendance calculations.
-- **Offline Journaling:** Saves entries locally with instant export and PWI dispatch upon reconnecting to the network.
-
-### 4. 🌦️ Track Vulnerability & Weather Stress Monitor
-- **Live Thermal & Weather Telemetry:** Live temperature, wind velocity, and precipitation monitoring via OpenWeatherMap.
-- **Rail Buckling Hazard Prediction:** Real-time track stress estimation for high-temperature rail expansion and extreme monsoon washaway vulnerability.
-
-### 5. 📖 PW Manual AI Assistant & Emergency Directory
-- **Interactive Rulebook:** Natural language search for track safety codes, maintenance tolerances, and gauge criteria in Telugu or English.
-- **One-Tap Emergency Contacts:** Direct dialers for Station Master (SKM), Section PWI/SSE, Railway Emergency Helpline (139), and Railway Protection Force (1800-111-322).
+6. **Outdoor Daylight High-Contrast Mode**
+   - 1-tap toggle between **Industrial Field Dark** and **Outdoor Daylight High-Contrast** designed for harsh midday sunlight on open track.
 
 ---
 
-## 🏗️ Technical Architecture & Design Principles
+## Architecture
 
-```
-                  ┌─────────────────────────────────────┐
-                  │       PWA Browser Environment       │
-                  │   (Low-end Android Field Devices)   │
-                  └──────────────────┬──────────────────┘
-                                     │
-           ┌─────────────────────────┼─────────────────────────┐
-           ▼                         ▼                         ▼
-┌────────────────────┐    ┌────────────────────┐    ┌────────────────────┐
-│   SERVICE WORKER   │    │    INDEXEDDB &     │    │  AUDIO / SPEECH    │
-│  Offline Asset &   │    │   LOCAL STORAGE    │    │ Web Speech API &   │
-│ Timetable Caching  │    │  Field Logs Cache  │    │ Multi-Tone Siren   │
-└────────────────────┘    └────────────────────┘    └────────────────────┘
-                                     │
-                                     ▼ (When Online)
-                          ┌────────────────────┐
-                          │  VERCEL SERVERLESS │
-                          │     /api/chat      │
-                          └──────────┬─────────┘
-                                     ▼
-                          ┌────────────────────┐
-                          │  BYNARA ROUTER AI  │
-                          │ Agnes Vision/LLM   │
-                          └────────────────────┘
-```
-
-- **Offline-First PWA:** Built with high-efficiency Service Workers, precaching all core scripts, styles, SVGs, and timetable databases for 100% functionality without internet access.
-- **Zero Framework Runtime Overhead:** Engineered with lightweight modern vanilla JavaScript (ES modules) and native CSS custom properties. Sub-50ms execution speed on budget Android smartphones used in the field.
-- **Secure Serverless Proxy:** Edge API routes (`/api/chat`) keep upstream AI provider keys protected on the server without client-side exposure.
+- **Frontend:** Zero-framework Vanilla ES Modules (`index.html`, `css/style.css`, `js/*.js`) — fast cold boots on budget Android phones, zero npm runtime dependencies.
+- **Offline Layer:** Service Worker (`sw.js` v7.0, query-resilient Stale-While-Revalidate + `/api/*` network pass-through) + IndexedDB (`js/db.js`).
+- **Edge Hosting & APIs:** Hosted 100% on **Cloudflare Workers with Static Assets** (`wrangler.jsonc`, `worker/index.js`, `worker/handlers.js`, `_headers`, `.assetsignore`).
+  - `GET /api/health` — Edge health & configured service diagnostics
+  - `POST /api/chat` — Server-side OpenAI-compatible AI proxy (`AI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, or `BYNARA_API_KEY`)
+  - `GET /api/live-status?train=<no>&date=<YYYY-MM-DD>` — RailRadar v1 proxy (`RAILRADAR_API_KEY`) with 20 s edge cache
 
 ---
 
-## 📂 Repository Structure
+## Local Development & Testing
 
 ```bash
-RailRaksha/
-├── index.html              # App shell, SVG sprite system & 5 core screens
-├── manifest.json           # PWA progressive web app manifest
-├── sw.js                   # Offline caching Service Worker
-├── vercel.json             # Vercel deployment routing & header rules
-├── netlify.toml            # Netlify deployment fallback configuration
-├── api/
-│   └── chat.js             # Vercel serverless proxy for Bynara Vision AI
-├── css/
-│   └── style.css           # High-contrast, dark-mode railway design system
-├── js/
-│   ├── app.js              # State manager & screen router
-│   ├── config.js           # Central configuration & local overrides
-│   ├── train-alert.js      # Train proximity calculation & audio siren
-│   ├── defect-report.js    # AI camera capture & IRPWM defect classifier
-│   ├── gang-diary.js       # Voice-to-text recording & diary generator
-│   ├── weather-alert.js    # Rail thermal stress & weather monitoring
-│   ├── pw-manual.js        # Rulebook query engine & emergency hotline
-│   ├── live-trains.js      # NTES/RailRadar live feed parser
-│   ├── timetable-data.js   # Offline station timetable database (SKM/UPD)
-│   └── db.js               # Offline storage manager
-└── icons/                  # High-DPI maskable PWA icons & branding
+# 1. Run unit & handler tests (Node 20+)
+node --test tests/engine.test.mjs
+
+# 2. Serve locally
+python3 -m http.server 8080
+# Open http://localhost:8080
 ```
 
----
+## Cloudflare Deployment
 
-## 🚀 Setup & Deployment
+Push to `main` on GitHub (`vahid-kanna/RailRaksha`) to trigger automatic Cloudflare Workers deployment (`npx wrangler deploy` via `wrangler.jsonc`).
 
-RailRaksha is a static PWA with **server-side API proxy routes** for AI and live train status. API keys are never shipped to the browser.
-
-### Prerequisites
-
-- A [Vercel](https://vercel.com) or [Cloudflare Pages](https://pages.cloudflare.com) account
-- At least one AI provider key (Bynara, Groq, OpenRouter, or an OpenAI-compatible endpoint)
-
-### Environment Variables
-
-Set these in your hosting dashboard (never commit them):
-
-| Variable | Service | Required |
-|----------|---------|----------|
-| `BYNARA_API_KEY` | [Bynara](https://ai.bynara.id) | Recommended (primary AI proxy) |
-| `BYNARA_API_URL` | Bynara-compatible endpoint override | Optional (default `https://ai.bynara.id/v1/chat/completions`) |
-| `BYNARA_MODEL` | Bynara model id | Optional (default `agnes-2.5-flash`) |
-| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) | Recommended fallback |
-| `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys) | Optional fallback |
-| `AI_API_URL` | Any OpenAI-compatible chat completions URL | Optional fallback |
-| `AI_API_KEY` | Key for `AI_API_URL` | Optional |
-| `AI_MODEL` | Model for `AI_API_URL` | Optional (default `gpt-4o-mini`) |
-| `OPENWEATHER_KEY` / `OWM_API_KEY` | [OpenWeatherMap](https://openweathermap.org/api) | Optional (weather) |
-| `WEATHERAPI_KEY` | [WeatherAPI](https://www.weatherapi.com) | Optional (weather fallback) |
-
-### Local Development
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/vahid-kanna/RailRaksha.git
-cd RailRaksha
-
-# 2. Serve the static frontend
-npx serve .
-# Open http://localhost:3000
-```
-
-For local AI proxy testing, run a platform dev server that executes `/api/*` routes (for example `vercel dev` or Cloudflare Pages dev) and provide the env vars above. The frontend calls `/api/chat`; it does not require browser-stored provider keys.
-
-### Deploy to Vercel
-
-1. Push your code to GitHub
-2. Import the repository in [Vercel Dashboard](https://vercel.com/new)
-3. Add environment variables in **Settings → Environment Variables**
-4. Deploy — `vercel.json` ships the static PWA and `/api/chat`, `/api/live-status` serverless routes
-
-### Deploy to Cloudflare Pages
-
-1. Connect the GitHub repo in Cloudflare Pages
-2. Build command: *(none)*, output directory: `.`
-3. Add the same environment variables in Pages project settings
-4. Deploy — `functions/api/chat.js` and `functions/api/live-status.js` provide the same proxy endpoints
-
-### Security Notes
-
-- Never commit `.env`, `.env.local`, `.env.*.local`, or `*.check.tmp`
-- AI provider keys live only in server env vars; the browser talks to `/api/chat`
-- Rotate any key that was ever exposed in client-side code or screenshots
-
-## 🌐 Production Deployment
-
-RailRaksha is configured for **Vercel** and **Netlify** with automatic build-time key injection:
-
-1. In your Vercel/Netlify dashboard, define the following Environment Variables:
-   - `BYNARA_API_KEY`
-   - `GROQ_API_KEY`
-   - `RAILRADAR_KEY`
-   - `OWM_API_KEY`
-2. AI provider keys live in server environment variables and are consumed only by `/api/chat` serverless/Pages routes.
-3. Deployed live with zero downtime at **[railraksha.vercel.app](https://railraksha.vercel.app)**.
+Configure optional server-side secrets in **Cloudflare Dashboard → Workers & Pages → `railraksha` → Settings → Variables and Secrets**:
+- `GEMINI_API_KEY` (or `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `BYNARA_API_KEY` / `AI_API_KEY`) — enables Cloud AI vision & diary formatting
+- `RAILRADAR_API_KEY` — enables live NTES/RailRadar v1 train status overlay (schedule mode works automatically without it)
 
 ---
 
-## 👨‍💻 Creator & Attribution
-
-- **Developer:** [Shaik Vahid Basha](https://github.com/vahid-kanna) (B.Tech Civil Engineering, IIT Madras)
-- **Field Inspiration:** Dedicated to Indian Railways Gang Mates and Track Maintainers on the SKM–UPD Section.
-
----
-
-## 📄 License & Intellectual Property
-
-Copyright © 2026 Shaik Vahid Basha. All rights reserved.  
-Developed for Indian Railways track maintainer safety and field operations. Authorized for non-commercial safety enhancement, field research, and academic evaluation across Indian Railways. Unauthorized commercial redistribution or closed-source replication is prohibited.
+**Author:** Shaik Vahid Basha · IIT Madras  
+**License:** See `LICENSE`

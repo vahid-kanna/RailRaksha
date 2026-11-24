@@ -1,635 +1,914 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0F172A" />
-  <meta name="description" content="RailRaksha (రైల్ రక్ష) — Offline-first track safety & field assistant for Indian Railways Track Maintainers (Vijayawada Division, SCR)" />
+  <meta name="theme-color" content="#0B0E14" />
+  <meta name="description" content="RailRaksha (రైల్ రక్ష) — Offline-first track safety & field documentation PWA for Indian Railways Track Maintainers on the SKM–UPD corridor (Vijayawada Division, SCR)." />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RailRaksha" />
   <meta name="robots" content="index, follow" />
   <meta name="author" content="Shaik Vahid Basha" />
-  <link rel="icon" type="image/png" href="icons/logo.png" />
+
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="canonical" href="https://railraksha.tech/" />
 
-  <meta property="og:title" content="RailRaksha — Track Safety Assistant" />
-  <meta property="og:description" content="Offline-first PWA for Indian Railways Track Maintainers. Location-agnostic train alerts, defect reporting, gang diary, live weather risk, and IRPWM assistant." />
+  <meta property="og:title" content="RailRaksha — Railway Track Safety & Field Assistant" />
+  <meta property="og:description" content="Offline-first PWA for Indian Railways Track Maintainers. Direction-aware corridor radar, IRPWM defect logging, bilingual Telugu Gang Diary, LWR thermal weather risk, and offline manual." />
   <meta property="og:type" content="website" />
-  <meta property="og:image" content="icons/icon-512.png" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="RailRaksha — Track Safety Assistant" />
-  <meta name="twitter:description" content="Offline-first PWA for Indian Railways Track Maintainers. Real-time alerts, defect logging, and IRPWM guidance." />
-  <meta name="twitter:image" content="icons/icon-512.png" />
+  <meta property="og:url" content="https://railraksha.tech/" />
+  <meta property="og:image" content="https://railraksha.tech/icons/icon-512.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="RailRaksha — Railway Track Safety & Field Assistant" />
+  <meta name="twitter:description" content="Offline-first field PWA built for Indian Railways Gang Mates & Track Maintainers." />
+  <meta name="twitter:image" content="https://railraksha.tech/icons/icon-512.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <title>RailRaksha — రైల్ రక్ష</title>
-  <link rel="stylesheet" href="css/style.css?v=6.0" />
+  <title>RailRaksha — Railway Track Safety &amp; Field Assistant</title>
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body data-armed="false" data-level="none" data-track="BOTH">
-
+<body data-armed="false" data-level="NONE" data-track="BOTH">
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
-  <!-- ═══ HEADER ═══ -->
+  <!-- ═══ TOP HEADER ═══ -->
   <header class="app-header" role="banner">
     <div class="header-inner">
       <div class="header-brand">
-        <img src="icons/logo.png" alt="RailRaksha logo" class="brand-logo" width="36" height="36" />
+        <img src="icons/logo.png" alt="RailRaksha emblem" class="brand-logo" width="34" height="34" />
         <div class="brand-text">
-          <span class="brand-name">RailRaksha</span>
-          <span class="brand-name-te">రైల్ రక్ష</span>
+          <div class="brand-title-row">
+            <h1 class="brand-name">RailRaksha</h1>
+            <span class="brand-name-te" lang="te">రైల్ రక్ష</span>
+          </div>
+          <div class="header-location">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span id="header-subtitle">SKM–UPD · Vijayawada Div.</span>
+          </div>
         </div>
       </div>
-      <div class="header-right">
-        <div class="header-location">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span id="header-subtitle">SKM–UPD · Vijayawada Div.</span>
-        </div>
-        <button class="btn-settings" id="btn-settings" aria-label="Open settings" title="Settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+
+      <div class="header-actions">
+        <button class="btn-sos" id="btn-sos" type="button" aria-label="Open emergency line protection and helplines">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>SOS</span>
+        </button>
+        <button class="btn-icon-hdr" id="btn-theme" type="button" aria-label="Switch to outdoor daylight high-contrast mode" title="Outdoor Daylight Mode">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+        <button class="btn-icon-hdr" id="btn-settings" type="button" aria-label="Open settings" title="Settings">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
       </div>
     </div>
   </header>
 
+  <!-- ═══ NAVIGATION (top strip on desktop, bottom tab bar on mobile) ═══ -->
+  <nav class="app-nav" role="tablist" aria-label="Main modules">
+    <div class="app-nav-inner">
+      <button aria-current="page" class="nav-btn active" data-screen="train-alert" id="nav-alert" role="tab" aria-selected="true" aria-controls="screen-train-alert" type="button">
+        <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5l2.5-7 5 14 2.5-7h5"/></svg></span>
+        <span class="nav-label">Alerts</span>
+      </button>
+      <button class="nav-btn" data-screen="defect" id="nav-defect" role="tab" aria-selected="false" aria-controls="screen-defect" type="button">
+        <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+        <span class="nav-label">Defect</span>
+      </button>
+      <button class="nav-btn" data-screen="diary" id="nav-diary" role="tab" aria-selected="false" aria-controls="screen-diary" type="button">
+        <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+        <span class="nav-label">Diary</span>
+      </button>
+      <button class="nav-btn" data-screen="weather" id="nav-weather" role="tab" aria-selected="false" aria-controls="screen-weather" type="button">
+        <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
+        <span class="nav-label">Weather</span>
+      </button>
+      <button class="nav-btn" data-screen="manual" id="nav-manual" role="tab" aria-selected="false" aria-controls="screen-manual" type="button">
+        <span class="nav-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+        <span class="nav-label">Manual</span>
+      </button>
+    </div>
+  </nav>
+
   <!-- ═══ MAIN CONTENT ═══ -->
   <main class="app-main" id="main-content" role="main">
 
     <!-- ═══════════════════════════════
-         SCREEN 1: ALERTS (default)
+         SCREEN 1: CORRIDOR ALERTS
          ═══════════════════════════════ -->
     <section class="screen active" id="screen-train-alert" role="tabpanel" aria-labelledby="nav-alert">
 
-      <!-- Status badges -->
+      <!-- Telemetry Status Strip -->
       <div class="status-strip" role="status" aria-live="polite">
         <div class="badge-status badge-neutral" id="gps-badge">
           <span class="badge-icon" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
           </span>
-          <span class="badge-label" id="gps-badge-text">SELECT BEAT</span>
+          <span class="badge-label" id="gps-badge-text">MANUAL BEAT · SKM</span>
         </div>
         <div class="badge-status badge-neutral" id="feed-badge">
           <span class="badge-dot" aria-hidden="true"></span>
           <span class="badge-label" id="feed-badge-text">SCHEDULE MODE</span>
         </div>
+        <div class="badge-status badge-ok" id="net-badge">
+          <span class="badge-dot" aria-hidden="true"></span>
+          <span class="badge-label" id="net-badge-text">ONLINE</span>
+        </div>
       </div>
 
-      <!-- Status Band -->
-      <div class="status-band" id="status-band" aria-live="assertive">
-        <div class="status-en" id="status-en">TRACK CLEAR</div>
-        <div class="status-te" id="status-te" lang="te">సురక్షితం · రైలు సమీపంలో లేదు</div>
+      <!-- Simulation Drill Guardrail Banner -->
+      <div class="drill-banner" id="drill-banner" role="status" hidden>
+        <div class="drill-banner-text">
+          <strong>SIMULATION DRILL ACTIVE</strong> — Synthetic express train for crew training &amp; demo. Not live railway traffic.
+        </div>
+        <button type="button" class="btn-drill-stop" id="btn-end-drill-banner">End Drill</button>
       </div>
 
-      <!-- Session Control -->
-      <div class="session-bar">
-        <button class="session-mega-btn session-off" id="session-mega-btn" type="button" aria-label="Toggle work session">
-          <span class="smb-left">
-            <span class="smb-icon" id="smb-icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </span>
-            <span class="smb-text">
-              <span class="smb-title" id="smb-title">START WORK SESSION</span>
-              <span class="smb-sub" id="smb-sub">Tap when on track to arm sirens, voice &amp; live GPS</span>
-            </span>
-          </span>
-          <span class="smb-right" id="smb-right" hidden>
-            <span class="smb-status-dot dot-off" id="smb-dot"></span>
-            <span class="smb-timer" id="smb-timer">00:00</span>
-          </span>
-        </button>
-        <p class="session-last" id="smb-last"></p>
-      </div>
+      <!-- Command Grid (1-col mobile, 2-col desktop) -->
+      <div class="alerts-grid">
+        <div class="alerts-col-primary">
 
-      <!-- Primary Threat Card -->
-      <section class="threat" id="threat" role="alert" aria-live="assertive" aria-atomic="true" hidden>
-        <header class="threat-head">
-          <span class="threat-pill" id="t-pill">CRITICAL</span>
-          <span class="threat-src" id="t-src" data-state="warn">SCHEDULED</span>
-        </header>
-        <div class="threat-train">
-          <span class="t-no" id="t-no">12711</span>
-          <div class="t-nametag">
-            <b id="t-name">Pinakini Express</b>
-            <small id="t-line">UP · BZA</small>
+          <!-- Status Band -->
+          <div class="status-band" id="status-band" aria-live="assertive">
+            <div class="status-en" id="status-en">TRACK CLEAR</div>
+            <div class="status-te" id="status-te" lang="te">సురక్షితం · రైలు సమీపంలో లేదు</div>
           </div>
-        </div>
-        <div class="threat-stats" aria-label="Time, distance and speed">
-          <div class="stat stat-eta">
-            <b id="t-eta">2:40</b>
-            <span>TIME LEFT</span>
-          </div>
-          <div class="stat">
-            <b><span id="t-dist">4.2</span> <small>km</small></b>
-            <span>DISTANCE</span>
-          </div>
-          <div class="stat">
-            <b id="t-speed">95 km/h</b>
-            <span>SPEED</span>
-          </div>
-        </div>
-        <button class="btn-ack" id="ack" type="button" hidden aria-label="Acknowledge alert and silence siren">
-          ACKNOWLEDGE · SIREN OFF
-        </button>
-        <p class="threat-more" id="t-more" aria-live="polite"></p>
-      </section>
 
-      <!-- Radar View -->
-      <section class="radar-wrap" aria-label="Live corridor radar">
-        <div class="sec-head">
-          <h2 class="sec-title">
-            <span class="sec-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6l3 9 4-18 3 9h4"/></svg></span>
-            Corridor Radar
-          </h2>
-          <p class="sec-desc">Live positions, direction &amp; 30-min envelope</p>
-        </div>
-        <div class="radar-container">
-          <svg class="corridor-svg" id="corridor-svg" viewBox="0 0 600 140" role="img" aria-label="Track corridor radar showing train positions">
-            <defs>
-              <pattern id="sleeperPattern" width="20" height="20" patternUnits="userSpaceOnUse">
-                <rect x="4" y="0" width="12" height="20" fill="#334155" opacity="0.35" rx="1"/>
-              </pattern>
-            </defs>
-            <!-- UP line (top) -->
-            <line x1="10" y1="35" x2="590" y2="35" stroke="#475569" stroke-width="1" opacity="0.4"/>
-            <rect x="10" y="33" width="580" height="10" fill="url(#sleeperPattern)"/>
-            <line x1="10" y1="34" x2="590" y2="34" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
-            <line x1="10" y1="42" x2="590" y2="42" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
-            <text x="14" y="22" fill="#CBD5E1" font-size="9" font-weight="800" font-family="Inter, sans-serif" letter-spacing="1">UP LINE → BZA</text>
-            <!-- DN line (bottom) -->
-            <line x1="10" y1="91" x2="590" y2="91" stroke="#475569" stroke-width="1" opacity="0.4"/>
-            <rect x="10" y="89" width="580" height="10" fill="url(#sleeperPattern)"/>
-            <line x1="10" y1="90" x2="590" y2="90" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
-            <line x1="10" y1="98" x2="590" y2="98" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
-            <text x="586" y="122" fill="#CBD5E1" font-size="9" font-weight="800" font-family="Inter, sans-serif" text-anchor="end" letter-spacing="1">← DN LINE GDR</text>
-            <!-- Worker marker -->
-            <line x1="300" y1="14" x2="300" y2="126" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.9"/>
-            <circle cx="300" cy="66" r="8" fill="#F59E0B" stroke="#FFFBEB" stroke-width="2.5"/>
-            <circle cx="300" cy="66" r="14" fill="none" stroke="#F59E0B" stroke-width="1" opacity="0.35"/>
-            <text x="300" y="136" fill="#FBBF24" font-size="9" font-weight="800" font-family="Inter, sans-serif" text-anchor="middle" letter-spacing="0.5">YOU</text>
-            <!-- Trains layer (rendered by JS) -->
-            <g id="radar-trains"></g>
-          </svg>
-        </div>
-        <div class="radar-footer">
-          <span class="radar-lbl">← GDR 20 km</span>
-          <span class="radar-lbl radar-lbl-mid">±20 km corridor window</span>
-          <span class="radar-lbl">BZA 20 km →</span>
-        </div>
-      </section>
+          <!-- Session + Drill Control Row -->
+          <div class="session-bar">
+            <div class="session-row">
+              <button class="session-mega-btn session-off" id="session-mega-btn" type="button" aria-pressed="false" aria-label="Toggle work session">
+                <span class="smb-left">
+                  <span class="smb-icon" id="smb-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </span>
+                  <span class="smb-text">
+                    <span class="smb-title" id="smb-title">START WORK SESSION</span>
+                    <span class="smb-sub" id="smb-sub">Tap on track to arm sirens, voice &amp; live GPS</span>
+                  </span>
+                </span>
+                <span class="smb-right" id="smb-right" hidden>
+                  <span class="smb-status-dot dot-off" id="smb-dot"></span>
+                  <span class="smb-timer" id="smb-timer">00:00</span>
+                </span>
+              </button>
 
-      <!-- Track Selector -->
-      <section class="control-strip" aria-label="Track direction selector">
-        <span class="cs-label">YOUR TRACK</span>
-        <div class="segmented" role="radiogroup" aria-label="Track line selection">
-          <button type="button" class="seg" data-track="UP" role="radio" aria-checked="false">UP</button>
-          <button type="button" class="seg" data-track="DN" role="radio" aria-checked="false">DN</button>
-          <button type="button" class="seg" data-track="BOTH" role="radio" aria-checked="true">BOTH</button>
-        </div>
-      </section>
-
-      <!-- Position / Beat Selector -->
-      <section class="work-beat" aria-label="Work position">
-        <div class="wb-row">
-          <div class="wb-left">
-            <span class="wb-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-            </span>
-            <div>
-              <span class="wb-label">WORK BEAT</span>
-              <span class="wb-value" id="gps-text">Select Beat</span>
+              <button class="btn-drill" id="btn-drill" type="button" aria-pressed="false" title="Run a simulated approaching train drill">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span class="drill-btn-label">Safety Drill</span>
+              </button>
             </div>
+            <p class="session-last" id="smb-last"></p>
           </div>
-          <button class="btn-beat-toggle" id="beat-toggle" type="button" aria-expanded="false" aria-controls="beat-panel">Change Beat</button>
-        </div>
-        <div class="beat-panel" id="beat-panel" hidden>
-          <p class="beat-hint">Tap your station or yard — GPS will refine your exact km automatically when signal is available.</p>
-          <div class="beat-grid" id="beat-grid"></div>
-          <div class="nudge-row">
-            <button type="button" class="nudge" id="nudge-minus" aria-label="Nudge 500 metres toward GDR">− 0.5 km GDR</button>
-            <button type="button" class="nudge" id="nudge-plus" aria-label="Nudge 500 metres toward BZA">+ 0.5 km BZA</button>
-          </div>
-        </div>
-      </section>
 
-      <!-- Corridor Traffic -->
-      <section class="trains-card" aria-label="Corridor train traffic">
-        <div class="trains-card-head">
-          <h2 class="trains-title">Corridor Traffic</h2>
-          <button class="btn-refresh" id="btn-refresh-trains" type="button" aria-label="Refresh train data">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            Refresh
-          </button>
+          <!-- Primary Threat Card (strictly hidden when clear) -->
+          <section class="threat" id="threat" role="alert" aria-live="assertive" aria-atomic="true" hidden>
+            <header class="threat-head">
+              <span class="threat-pill" id="t-pill">WARNING</span>
+              <span class="threat-src" id="t-src" data-state="warn">SCHEDULED</span>
+            </header>
+            <div class="threat-train">
+              <span class="t-no" id="t-no">12711</span>
+              <div class="t-nametag">
+                <b id="t-name">Pinakini Express</b>
+                <small id="t-line">UP · BZA</small>
+              </div>
+            </div>
+            <div class="threat-stats" aria-label="Time, distance and speed">
+              <div class="stat stat-eta">
+                <b id="t-eta">2:40</b>
+                <span>TIME LEFT</span>
+              </div>
+              <div class="stat">
+                <b><span id="t-dist">4.2</span> <small>km</small></b>
+                <span>DISTANCE</span>
+              </div>
+              <div class="stat">
+                <b id="t-speed">95 km/h</b>
+                <span>SPEED</span>
+              </div>
+            </div>
+            <button class="btn-ack" id="ack" type="button" hidden aria-label="Acknowledge alert and silence siren">
+              ACKNOWLEDGE · సరే (SILENCE SIREN)
+            </button>
+            <p class="threat-more" id="t-more" aria-live="polite"></p>
+          </section>
+
+          <!-- Dual-Rail Corridor Radar -->
+          <section class="panel radar-wrap" aria-label="Corridor radar">
+            <div class="panel-head">
+              <div>
+                <h2 class="panel-title">Corridor Radar</h2>
+                <p class="panel-desc">±20 km BZA–GDR double-line schematic &amp; uncertainty envelope</p>
+              </div>
+              <span class="radar-legend">
+                <i class="leg-dot leg-you"></i>You
+              </span>
+            </div>
+            <div class="radar-container">
+              <svg class="corridor-svg" id="corridor-svg" viewBox="0 0 600 148" role="img" aria-label="Double-line track corridor radar showing UP and DOWN lines, nearby stations, worker position, and approaching trains">
+                <defs>
+                  <pattern id="sleeperPattern" width="16" height="16" patternUnits="userSpaceOnUse">
+                    <rect x="4" y="0" width="7" height="16" fill="currentColor" opacity="0.16" rx="1"/>
+                  </pattern>
+                </defs>
+                <!-- Distance reference ticks: 20km, 10km, 5km, 3km -->
+                <g class="radar-ticks">
+                  <line x1="24" y1="22" x2="24" y2="122"/>
+                  <line x1="162" y1="22" x2="162" y2="122"/>
+                  <line x1="231" y1="22" x2="231" y2="122"/>
+                  <line x1="259" y1="22" x2="259" y2="122"/>
+                  <line x1="341" y1="22" x2="341" y2="122"/>
+                  <line x1="369" y1="22" x2="369" y2="122"/>
+                  <line x1="438" y1="22" x2="438" y2="122"/>
+                  <line x1="576" y1="22" x2="576" y2="122"/>
+                </g>
+                <!-- Dynamic nearby stations layer -->
+                <g id="radar-stations"></g>
+                <!-- UP line (top, moving right toward BZA) -->
+                <g class="rail-line rail-up">
+                  <rect x="12" y="36" width="576" height="12" fill="url(#sleeperPattern)"/>
+                  <line x1="12" y1="38" x2="588" y2="38" class="rail-steel"/>
+                  <line x1="12" y1="46" x2="588" y2="46" class="rail-steel"/>
+                  <text x="14" y="20" class="rail-label">UP LINE → BZA</text>
+                </g>
+                <!-- DN line (bottom, moving left toward GDR) -->
+                <g class="rail-line rail-dn">
+                  <rect x="12" y="92" width="576" height="12" fill="url(#sleeperPattern)"/>
+                  <line x1="12" y1="94" x2="588" y2="94" class="rail-steel"/>
+                  <line x1="12" y1="102" x2="588" y2="102" class="rail-steel"/>
+                  <text x="586" y="126" text-anchor="end" class="rail-label">← DN LINE GDR</text>
+                </g>
+                <!-- Worker marker at center (x=300) -->
+                <line x1="300" y1="16" x2="300" y2="130" class="worker-axis"/>
+                <circle cx="300" cy="70" r="7" class="worker-dot"/>
+                <circle cx="300" cy="70" r="13" class="worker-ring"/>
+                <text x="300" y="143" text-anchor="middle" class="worker-label" id="radar-worker-km">YOU</text>
+                <!-- Trains layer -->
+                <g id="radar-trains"></g>
+              </svg>
+            </div>
+            <div class="radar-footer">
+              <span class="radar-lbl">← GDR 20 km</span>
+              <span class="radar-lbl radar-lbl-mid">3 km · 5 km · 10 km ticks</span>
+              <span class="radar-lbl">BZA 20 km →</span>
+            </div>
+          </section>
+
         </div>
-        <p class="trains-sub" id="ambient-sub">Next 30 minutes · filtered to your active track line</p>
-        <ul class="ambient-list" id="ambient" aria-live="polite" aria-relevant="additions removals">
-          <li class="empty">No scheduled or live trains within 30 minutes</li>
-        </ul>
-      </section>
+
+        <div class="alerts-col-secondary">
+
+          <!-- Track Direction & Beat Controls -->
+          <section class="panel controls-panel" aria-label="Track line and work beat">
+            <div class="control-block">
+              <div class="control-head">
+                <span class="field-kicker">YOUR TRACK LINE</span>
+                <span class="field-te" lang="te">పని చేసే లైన్</span>
+              </div>
+              <div class="segmented" role="radiogroup" aria-label="Track line selection">
+                <button type="button" class="seg" data-track="UP" role="radio" aria-checked="false">
+                  <b>UP</b>
+                  <small>BZA →</small>
+                </button>
+                <button type="button" class="seg" data-track="DN" role="radio" aria-checked="false">
+                  <b>DOWN</b>
+                  <small>← GDR</small>
+                </button>
+                <button type="button" class="seg" data-track="BOTH" role="radio" aria-checked="true">
+                  <b>BOTH</b>
+                  <small lang="te">రెండు</small>
+                </button>
+              </div>
+            </div>
+
+            <div class="control-divider"></div>
+
+            <div class="work-beat">
+              <div class="wb-row">
+                <div class="wb-left">
+                  <span class="wb-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                  </span>
+                  <div class="wb-meta">
+                    <span class="field-kicker">WORK BEAT</span>
+                    <span class="wb-value" id="gps-text">km 293.0 · SKM</span>
+                  </div>
+                </div>
+                <div class="wb-btns">
+                  <button class="btn-subtle" id="btn-use-gps" type="button" title="Lock live GPS coordinates">GPS</button>
+                  <button class="btn-outline" id="beat-toggle" type="button" aria-expanded="false" aria-controls="beat-panel">Change Beat</button>
+                </div>
+              </div>
+              <div class="beat-panel" id="beat-panel" hidden>
+                <p class="beat-hint">Tap your nearest station — GPS refines exact km when signal is available.</p>
+                <div class="beat-grid" id="beat-grid"></div>
+                <div class="nudge-row">
+                  <button type="button" class="nudge" id="nudge-minus" aria-label="Move 500 metres toward GDR">− 0.5 km GDR</button>
+                  <button type="button" class="nudge" id="nudge-plus" aria-label="Move 500 metres toward BZA">+ 0.5 km BZA</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Explicit Goods / Freight Train Safety Notice -->
+          <div class="freight-notice" role="note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <p><strong>Freight &amp; Safety Boundary:</strong> Unscheduled goods trains do not appear on passenger feeds. Advisory prototype only — always maintain visual lookout &amp; official IRPWM protection.</p>
+          </div>
+
+          <!-- Corridor Traffic & Shift Alert Log -->
+          <section class="panel trains-card" aria-label="Corridor train traffic and alert history">
+            <div class="panel-head">
+              <div class="subtab-bar" role="tablist" aria-label="Traffic view">
+                <button type="button" class="subtab active" data-traffic-tab="trains" role="tab" aria-selected="true">Corridor Traffic</button>
+                <button type="button" class="subtab" data-traffic-tab="log" role="tab" aria-selected="false">Alert Log</button>
+              </div>
+              <button class="btn-subtle" id="btn-refresh-trains" type="button" aria-label="Refresh corridor traffic">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+            </div>
+
+            <div id="traffic-trains-pane">
+              <p class="panel-sub" id="ambient-sub">Next 30 minutes · active line highlighted</p>
+              <ul class="ambient-list" id="ambient" aria-live="polite" aria-relevant="additions removals">
+                <li class="empty">Loading corridor timetable...</li>
+              </ul>
+            </div>
+
+            <div id="traffic-log-pane" hidden>
+              <div class="log-pane-head">
+                <p class="panel-sub">Saved WARN / CRITICAL shift escalations (IndexedDB)</p>
+                <button type="button" class="btn-text-danger" id="btn-clear-alert-log">Clear</button>
+              </div>
+              <ul class="alert-log-list" id="alert-log-list">
+                <li class="empty">No alerts recorded yet.</li>
+              </ul>
+            </div>
+          </section>
+
+        </div>
+      </div>
     </section>
 
     <!-- ═══════════════════════════════
          SCREEN 2: DEFECT REPORTER
          ═══════════════════════════════ -->
     <section class="screen" id="screen-defect" role="tabpanel" aria-labelledby="nav-defect" hidden>
-      <div class="screen-head">
-        <div class="screen-head-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        </div>
-        <div>
-          <h1 class="screen-title">Defect Reporter</h1>
-          <p class="screen-title-te" lang="te">లోపం రిపోర్ట్</p>
-          <p class="screen-desc">Capture a track photo for AI-powered IRPWM classification</p>
-        </div>
-      </div>
-
-      <div class="capture-zone" id="capture-zone">
-        <div class="capture-placeholder" id="capture-placeholder">
-          <div class="cp-icon" aria-hidden="true">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <div class="screen-container">
+        <div class="screen-head">
+          <div class="screen-head-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           </div>
-          <p class="cp-title">Capture Track Photo</p>
-          <p class="cp-sub">Take a clear photo of the defect, rail, or sleeper</p>
-          <div class="cp-actions">
-            <button class="btn-capture" id="btn-camera" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              Camera
-            </button>
-            <button class="btn-capture btn-capture-secondary" id="btn-upload" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Upload
-            </button>
+          <div>
+            <h2 class="screen-title">Track Defect Reporter</h2>
+            <p class="screen-title-te" lang="te">ట్రాక్ లోపం రిపోర్ట్ · IRPWM Classification</p>
           </div>
         </div>
-        <input type="file" id="defect-file-input" accept="image/*" capture="environment" hidden aria-label="Take track photo" />
-        <input type="file" id="defect-upload-input" accept="image/*" hidden aria-label="Upload track photo" />
-        <img id="captured-image-preview" class="capture-preview" alt="Captured track defect photo" style="display:none;" />
-      </div>
 
-      <button class="btn-action btn-analyze" id="btn-analyze-defect" type="button" style="display:none;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Analyze Track Photo
-      </button>
-
-      <article class="defect-card" id="defect-analysis-card" aria-live="polite">
-        <div class="dc-header">
-          <div class="dc-type-row">
-            <div class="defect-type-badge" id="defect-type-badge">
-              <span class="dtb-icon" aria-hidden="true"></span>
-              <span id="defect-type-text">Defect</span>
+        <!-- Photo Capture Card -->
+        <div class="panel capture-zone" id="capture-zone">
+          <div class="capture-placeholder" id="capture-placeholder">
+            <div class="cp-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </div>
+            <p class="cp-title">Capture or Upload Track Photo</p>
+            <p class="cp-sub">Photograph rails, welds, PSC sleepers, ERC clips, or ballast voids</p>
+            <div class="cp-actions">
+              <button class="btn-primary" id="btn-camera" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Camera
+              </button>
+              <button class="btn-secondary" id="btn-upload" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload
+              </button>
+              <button class="btn-outline" id="btn-toggle-manual-defect" type="button" aria-expanded="false" aria-controls="manual-defect-panel">
+                Log Offline (IRPWM)
+              </button>
+            </div>
+          </div>
+
+          <input type="file" id="defect-file-input" accept="image/*" capture="environment" hidden aria-label="Take track photo" />
+          <input type="file" id="defect-upload-input" accept="image/*" hidden aria-label="Upload track photo" />
+          <img id="captured-image-preview" class="capture-preview" alt="Captured track defect preview" hidden />
+
+          <div class="photo-action-row" id="photo-action-row" hidden>
+            <button class="btn-primary" id="btn-analyze-defect" type="button">Analyze Photo (AI Vision)</button>
+            <button class="btn-secondary" id="btn-retake-photo" type="button">Retake</button>
+          </div>
+        </div>
+
+        <!-- 100% Offline Manual IRPWM Defect Classifier -->
+        <div class="panel manual-defect-panel" id="manual-defect-panel" hidden>
+          <h3 class="panel-title">Offline IRPWM Quick Classifier</h3>
+          <p class="panel-desc">Works with zero cellular signal — tags your current km chainage &amp; GPS automatically.</p>
+          <div class="form-field">
+            <label class="field-label" for="offline-defect-select">Defect Type (IRPWM Standard)</label>
+            <select id="offline-defect-select" class="field-input"></select>
+          </div>
+          <div class="form-field">
+            <label class="field-label" for="offline-defect-notes">Field Observation (optional)</label>
+            <textarea id="offline-defect-notes" class="field-textarea" rows="2" placeholder="e.g., LH rail weld crack near pole 292/14, joggle clamp applied..."></textarea>
+          </div>
+          <button class="btn-primary btn-full" id="btn-log-offline-defect" type="button">Generate IRPWM Report Offline</button>
+        </div>
+
+        <!-- Analysis Result Card -->
+        <article class="panel defect-card" id="defect-analysis-card" aria-live="polite" hidden>
+          <div class="dc-header">
+            <div class="defect-type-badge" id="defect-type-badge"><span>Defect</span></div>
             <span class="dc-time" id="detail-time">—</span>
           </div>
-        </div>
-        <div class="dc-body">
           <div class="dc-details">
             <div class="detail-row"><span class="dl">Severity</span><span class="dv" id="detail-severity">—</span></div>
-            <div class="detail-row"><span class="dl">Confidence</span><span class="dv" id="detail-confidence">—</span></div>
+            <div class="detail-row"><span class="dl">Source / Confidence</span><span class="dv" id="detail-confidence">—</span></div>
             <div class="detail-row"><span class="dl">IRPWM Code</span><span class="dv dv-mono" id="detail-irpwm">—</span></div>
-            <div class="detail-row"><span class="dl">Speed Restriction</span><span class="dv" id="detail-speed">—</span></div>
-            <div class="detail-row"><span class="dl">GPS Location</span><span class="dv dv-mono" id="detail-gps">—</span></div>
-            <div class="detail-row" hidden><span class="dl">Image Context</span><span class="dv" id="detail-general-info">—</span></div>
+            <div class="detail-row"><span class="dl">Speed Restriction</span><span class="dv dv-strong" id="detail-speed">—</span></div>
+            <div class="detail-row"><span class="dl">Location</span><span class="dv dv-mono" id="detail-gps">—</span></div>
+            <div class="detail-row" hidden><span class="dl">Context</span><span class="dv" id="detail-general-info">—</span></div>
           </div>
           <p class="dc-description" id="detail-description"></p>
           <div class="dc-action-block">
-            <div class="dc-action-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-              Recommended Action
-            </div>
+            <div class="dc-action-label">IMMEDIATE FIELD ACTION</div>
             <p class="dc-action-text" id="recommended-action"></p>
           </div>
           <div class="dc-ref" id="irpwm-reference"></div>
-        </div>
-        <div class="dc-footer">
-          <button class="btn-action btn-share" id="btn-share-report" type="button" style="display:none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-            Share &amp; Log Report
-          </button>
-          <button class="btn-action btn-secondary" id="btn-new-defect" type="button">New Report</button>
-        </div>
-      </article>
-
-      <section class="history-section" aria-label="Previous defect reports">
-        <h2 class="sec-title">Recent Defects</h2>
-        <div class="history-list" id="defect-history-list">
-          <div class="empty-state">
-            <div class="es-title">No defects logged yet</div>
-            <div class="es-sub">Captured and shared track reports are saved offline here.</div>
+          <div class="card-footer-actions">
+            <button class="btn-primary" id="btn-share-report" type="button">Save &amp; Share Report</button>
+            <button class="btn-secondary" id="btn-new-defect" type="button">New Report</button>
           </div>
-        </div>
-      </section>
+        </article>
+
+        <!-- Defect History -->
+        <section class="panel history-section" aria-label="Logged track defects">
+          <div class="panel-head">
+            <h3 class="panel-title">Logged Defects</h3>
+            <div class="panel-head-tools">
+              <div class="pill-filter" id="defect-filter-bar">
+                <button type="button" class="pf-btn active" data-filter="ALL">All</button>
+                <button type="button" class="pf-btn" data-filter="OPEN">Open</button>
+                <button type="button" class="pf-btn" data-filter="FIXED">Fixed</button>
+              </div>
+              <button type="button" class="btn-subtle" id="btn-export-defects">Export</button>
+            </div>
+          </div>
+          <div class="history-list" id="defect-history-list"></div>
+        </section>
+      </div>
     </section>
 
     <!-- ═══════════════════════════════
          SCREEN 3: GANG DIARY
          ═══════════════════════════════ -->
     <section class="screen" id="screen-diary" role="tabpanel" aria-labelledby="nav-diary" hidden>
-      <div class="screen-head">
-        <div class="screen-head-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        </div>
-        <div>
-          <h1 class="screen-title">Gang Diary</h1>
-          <p class="screen-title-te" lang="te">గ్యాంగ్ డైరీ</p>
-          <p class="screen-desc">Voice or text daily work log, formatted for Indian Railways</p>
-        </div>
-      </div>
-
-      <div class="diary-date-card">
-        <div class="dd-left">
-          <div class="dd-date" id="diary-date-text">—</div>
-          <div class="dd-gang" id="diary-gang-info">—</div>
-        </div>
-        <div class="dd-right">
-          <div class="dd-att-label">PRESENT</div>
-          <div class="dd-att-count" id="attendance-count">—<span>/—</span></div>
-          <div class="dd-att-bar-bg"><div class="dd-att-bar" id="attendance-bar" style="width:100%"></div></div>
-          <div class="dd-att-sub" id="attendance-sub">Full attendance today</div>
-        </div>
-      </div>
-
-      <div class="attendance-input-row">
-        <label class="air-label" for="attendance-input">Workers present today</label>
-        <input type="number" id="attendance-input" class="air-input" min="0" max="30" value="25" inputmode="numeric" />
-      </div>
-
-      <div class="voice-card">
-        <div class="voice-mic-row">
-          <div class="mic-circle" id="mic-emoji" aria-hidden="true">
+      <div class="screen-container">
+        <div class="screen-head">
+          <div class="screen-head-icon" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </div>
-          <div class="voice-text-col">
-            <div class="voice-title" id="voice-title">Record Today's Work</div>
-            <div class="voice-sub" id="voice-sub">తెలుగులో మాట్లాడండి — Tap to speak</div>
-          </div>
-        </div>
-        <div class="voice-actions">
-          <button class="btn-action btn-voice" id="btn-record" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            Record
-          </button>
-          <button class="btn-action btn-secondary" id="btn-type-diary" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Type Instead
-          </button>
-        </div>
-      </div>
-
-      <div class="transcription-card" id="transcription-card" aria-live="polite">
-        <div class="tc-label">TRANSCRIPTION / NOTES</div>
-        <div class="tc-text" id="transcription-text" lang="te"></div>
-        <button class="btn-action btn-generate" id="btn-generate-diary" type="button" style="display:none;">
-          Generate Gang Diary
-        </button>
-      </div>
-
-      <article class="diary-entry-card" id="diary-entry-card" aria-live="polite">
-        <div class="de-header">
           <div>
-            <div class="de-title">Gang Diary Entry</div>
-            <div class="de-subtitle" id="entry-date">—</div>
+            <h2 class="screen-title">Gang Diary</h2>
+            <p class="screen-title-te" lang="te">గ్యాంగ్ డైరీ · Bilingual Voice &amp; Offline Shift Log</p>
           </div>
-          <div class="de-saved-badge" id="entry-time">—</div>
         </div>
-        <div class="de-body">
-          <div class="de-field"><div class="de-label">Gang / Mate</div><div class="de-value" id="entry-gang">—</div></div>
-          <div class="de-field"><div class="de-label">Attendance</div><div class="de-value" id="entry-attendance">—</div></div>
-          <div class="de-field"><div class="de-label">Work Done</div><div class="de-value" id="entry-work-done">—</div></div>
-          <div class="de-field"><div class="de-label">Materials Used</div><div class="de-value" id="entry-materials">—</div></div>
-          <div class="de-field"><div class="de-label">Defects Observed</div><div class="de-value" id="entry-defects">—</div></div>
-          <div class="de-field"><div class="de-label">Safety Measures</div><div class="de-value" id="entry-safety">—</div></div>
-          <div class="de-field"><div class="de-label">Special Instructions</div><div class="de-value" id="entry-special">—</div></div>
-          <div class="de-field"><div class="de-label">Remarks</div><div class="de-value" id="entry-remarks">—</div></div>
-          <div class="de-field de-telugu"><div class="de-label">Telugu Summary</div><div class="de-value" id="entry-telugu" lang="te">—</div></div>
-        </div>
-        <div class="dc-footer">
-          <button class="btn-action btn-share" id="btn-save-diary" type="button" style="display:none;">Save Offline</button>
-          <button class="btn-action btn-secondary" id="btn-share-diary" type="button" style="display:none;">Share</button>
-        </div>
-      </article>
 
-      <section class="history-section" aria-label="Saved diary entries">
-        <div class="saved-header">
-          <h2 class="sec-title">Saved Today</h2>
-          <span class="sec-meta" id="today-entries-count">No entries saved today</span>
-        </div>
-        <div class="saved-diary-list" id="saved-entries-list"></div>
-      </section>
-    </section>
-
-    <!-- ═══════════════════════════════
-         SCREEN 4: WEATHER ALERT
-         ═══════════════════════════════ -->
-    <section class="screen" id="screen-weather" role="tabpanel" aria-labelledby="nav-weather" hidden>
-      <div class="screen-head">
-        <div class="screen-head-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
-        </div>
-        <div>
-          <h1 class="screen-title">Weather &amp; Track Risk</h1>
-          <p class="screen-title-te" lang="te">వాతావరణం &amp; ట్రాక్ ప్రమాదం</p>
-          <p class="screen-desc">Live telemetry mapped to IRPWM patrolling thresholds</p>
-        </div>
-      </div>
-
-      <div class="weather-now-card">
-        <div class="wn-top">
-          <div class="wn-left">
-            <div class="wn-icon" id="weather-icon-large" aria-hidden="true"></div>
+        <!-- Shift Date & Attendance Card -->
+        <div class="panel diary-date-card">
+          <div class="dd-top">
             <div>
-              <div class="wn-temp" id="weather-temp">—</div>
-              <div class="wn-desc" id="weather-desc">Loading weather…</div>
+              <div class="dd-date" id="diary-date-text">—</div>
+              <div class="dd-gang" id="diary-gang-info">—</div>
+            </div>
+            <div class="dd-att-badge">
+              <span class="field-kicker">PRESENT</span>
+              <div class="dd-att-count" id="attendance-count">25<span>/25</span></div>
             </div>
           </div>
-          <button class="btn-refresh" id="btn-refresh-weather" type="button" aria-label="Refresh weather">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            Refresh
-          </button>
+          <div class="dd-att-bar-bg"><div class="dd-att-bar" id="attendance-bar" style="width:100%"></div></div>
+          <div class="attendance-stepper-row">
+            <label class="field-label" for="attendance-input" id="attendance-sub">Full gang present</label>
+            <div class="stepper">
+              <button type="button" class="step-btn" id="btn-att-minus" aria-label="Decrease workers present">−</button>
+              <input type="number" id="attendance-input" class="step-input" min="0" max="60" value="25" inputmode="numeric" aria-label="Workers present count" />
+              <button type="button" class="step-btn" id="btn-att-plus" aria-label="Increase workers present">+</button>
+            </div>
+          </div>
         </div>
-        <div class="wn-meta" id="weather-location-text">Singarayakonda (SKM) · Prakasam</div>
-        <div class="wn-stats">
-          <div class="wn-stat"><span class="wn-stat-val" id="weather-humidity">—</span><span class="wn-stat-lbl">Humidity</span></div>
-          <div class="wn-stat"><span class="wn-stat-val" id="weather-wind">—</span><span class="wn-stat-lbl">Wind</span></div>
-          <div class="wn-stat"><span class="wn-stat-val" id="weather-rain">—</span><span class="wn-stat-lbl">Rainfall</span></div>
-        </div>
-      </div>
 
-      <section class="risk-section" aria-label="Track vulnerability alerts">
-        <h2 class="sec-title">Track Risk Assessment</h2>
-        <div class="risk-list" id="risk-list"></div>
-      </section>
+        <!-- Voice + Notes Composer -->
+        <div class="panel voice-card">
+          <div class="voice-head">
+            <div class="voice-head-left">
+              <div class="mic-circle" id="mic-emoji" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </div>
+              <div>
+                <h3 class="voice-title" id="voice-title">Daily Field Notes</h3>
+                <p class="voice-sub" id="voice-sub" lang="te">తెలుగులో మాట్లాడండి — Tap Record to dictate</p>
+              </div>
+            </div>
+            <div class="voice-head-tools">
+              <div class="pill-filter" id="speech-lang-toggle" aria-label="Dictation language">
+                <button type="button" class="pf-btn active" data-lang="te-IN" aria-pressed="true" lang="te">తెలుగు</button>
+                <button type="button" class="pf-btn" data-lang="en-IN" aria-pressed="false">English</button>
+              </div>
+              <button class="btn-subtle" id="btn-clear-notes" type="button">Clear</button>
+            </div>
+          </div>
+
+          <label for="diary-notes-input" class="sr-only">Today's work details</label>
+          <textarea id="diary-notes-input" class="field-textarea diary-textarea" rows="4" lang="te" placeholder="Dictate in Telugu/English or type today's work (e.g., Packed 18 sleepers km 292–293, tightened 30 ERC clips, lookout posted)..."></textarea>
+
+          <div class="phrase-chips" id="diary-phrase-chips" aria-label="Quick field phrases"></div>
+
+          <div class="voice-actions">
+            <button class="btn-voice" id="btn-record" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+              <span id="btn-record-label">Record Voice</span>
+            </button>
+            <button class="btn-primary" id="btn-generate-diary" type="button">Format Gang Diary</button>
+          </div>
+        </div>
+
+        <!-- Formatted Diary Preview Card -->
+        <article class="panel diary-entry-card" id="diary-entry-card" aria-live="polite" hidden>
+          <div class="de-header">
+            <div>
+              <h3 class="de-title">Official Gang Diary Entry</h3>
+              <div class="de-subtitle" id="entry-date">—</div>
+            </div>
+            <span class="de-time-pill" id="entry-time">—</span>
+          </div>
+          <div class="de-body">
+            <div class="de-field"><div class="de-label">Gang / Mate</div><div class="de-value" id="entry-gang">—</div></div>
+            <div class="de-field"><div class="de-label">Attendance</div><div class="de-value" id="entry-attendance">—</div></div>
+            <div class="de-field"><div class="de-label">Work Done</div><div class="de-value de-pre" id="entry-work-done">—</div></div>
+            <div class="de-field"><div class="de-label">Materials Used</div><div class="de-value" id="entry-materials">—</div></div>
+            <div class="de-field"><div class="de-label">Defects Observed</div><div class="de-value" id="entry-defects">—</div></div>
+            <div class="de-field"><div class="de-label">Safety Measures</div><div class="de-value" id="entry-safety">—</div></div>
+            <div class="de-field"><div class="de-label">Special Instructions</div><div class="de-value" id="entry-special">—</div></div>
+            <div class="de-field"><div class="de-label">Remarks</div><div class="de-value" id="entry-remarks">—</div></div>
+            <div class="de-field de-telugu"><div class="de-label">Telugu Summary</div><div class="de-value" id="entry-telugu" lang="te">—</div></div>
+          </div>
+          <div class="card-footer-actions">
+            <button class="btn-primary" id="btn-save-diary" type="button">Save Offline</button>
+            <button class="btn-secondary" id="btn-share-diary" type="button">Share / Copy</button>
+          </div>
+        </article>
+
+        <!-- Saved Diary History -->
+        <section class="panel history-section" aria-label="Saved gang diary entries">
+          <div class="panel-head">
+            <div>
+              <h3 class="panel-title">Saved Diary Log</h3>
+              <span class="panel-sub" id="today-entries-count">No entries today (IST)</span>
+            </div>
+            <div class="panel-head-tools">
+              <div class="pill-filter" id="diary-history-scope">
+                <button type="button" class="pf-btn active" data-scope="today">Today</button>
+                <button type="button" class="pf-btn" data-scope="all">All</button>
+              </div>
+              <button type="button" class="btn-subtle" id="btn-export-diary">Export</button>
+            </div>
+          </div>
+          <div class="saved-diary-list" id="saved-entries-list"></div>
+        </section>
+      </div>
     </section>
 
     <!-- ═══════════════════════════════
-         SCREEN 5: PW MANUAL
+         SCREEN 4: WEATHER & RAIL STRESS
+         ═══════════════════════════════ -->
+    <section class="screen" id="screen-weather" role="tabpanel" aria-labelledby="nav-weather" hidden>
+      <div class="screen-container">
+        <div class="screen-head">
+          <div class="screen-head-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+          </div>
+          <div>
+            <h2 class="screen-title">Weather &amp; LWR Rail Stress</h2>
+            <p class="screen-title-te" lang="te">వాతావరణం &amp; ట్రాక్ ఉష్ణోగ్రత · IRPWM Thresholds</p>
+          </div>
+        </div>
+
+        <div class="panel weather-now-card">
+          <div class="wn-top">
+            <div class="wn-left">
+              <div class="wn-icon" id="weather-icon-large" aria-hidden="true"></div>
+              <div>
+                <div class="wn-temps">
+                  <div class="wn-temp-block">
+                    <span class="field-kicker">AMBIENT</span>
+                    <span class="wn-temp" id="weather-temp">—</span>
+                  </div>
+                  <div class="wn-temp-sep" aria-hidden="true"></div>
+                  <div class="wn-temp-block">
+                    <span class="field-kicker">EST. RAIL STEEL</span>
+                    <span class="wn-rail-temp" id="weather-rail-temp">—</span>
+                  </div>
+                </div>
+                <div class="wn-desc" id="weather-desc">Loading telemetry...</div>
+              </div>
+            </div>
+            <button class="btn-subtle" id="btn-refresh-weather" type="button" aria-label="Refresh weather">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Refresh
+            </button>
+          </div>
+
+          <div class="wn-meta" id="weather-location-text">Singarayakonda (SKM) · Vijayawada Div., SCR</div>
+
+          <!-- LWR Thermal Stress Gauge -->
+          <div class="thermal-meter">
+            <div class="thermal-head">
+              <span class="thermal-status" id="rail-thermal-status" data-state="ok">CHECKING LWR THERMAL BAND</span>
+              <span class="thermal-limit">IRPWM Patrol Limit: 65°C</span>
+            </div>
+            <div class="thermal-bar-bg">
+              <div class="thermal-bar-fill" id="rail-thermal-bar" data-state="ok" style="width:45%"></div>
+              <div class="thermal-threshold-mark" style="left:86.7%" title="65°C Hot Weather Patrolling"></div>
+            </div>
+          </div>
+
+          <div class="wn-stats">
+            <div class="wn-stat"><span class="wn-stat-val" id="weather-humidity">—</span><span class="wn-stat-lbl">Humidity</span></div>
+            <div class="wn-stat"><span class="wn-stat-val" id="weather-wind">—</span><span class="wn-stat-lbl">Wind</span></div>
+            <div class="wn-stat"><span class="wn-stat-val" id="weather-rain">—</span><span class="wn-stat-lbl">Rain Now</span></div>
+            <div class="wn-stat"><span class="wn-stat-val" id="weather-forecast-rain">—</span><span class="wn-stat-lbl">12h Peak</span></div>
+          </div>
+        </div>
+
+        <section class="risk-section" aria-label="Track vulnerability assessment">
+          <h3 class="section-heading">IRPWM Track Risk Assessment</h3>
+          <div class="risk-list" id="risk-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════
+         SCREEN 5: IRPWM MANUAL
          ═══════════════════════════════ -->
     <section class="screen" id="screen-manual" role="tabpanel" aria-labelledby="nav-manual" hidden>
-      <div class="screen-head">
-        <div class="screen-head-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        </div>
-        <div>
-          <h1 class="screen-title">PW Manual Assistant</h1>
-          <p class="screen-title-te" lang="te">PW మాన్యువల్</p>
-          <p class="screen-desc">Instant IRPWM rules — offline first, AI fallback for custom queries</p>
-        </div>
-      </div>
-
-      <div class="search-bar">
-        <input type="text" id="manual-search-input" class="search-input" placeholder="Ask about gauge, fractures, monsoon patrolling…" aria-label="Search PW Manual" />
-        <button class="btn-search-icon" id="btn-voice-search" type="button" aria-label="Voice search">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        </button>
-        <button class="btn-search-submit" id="btn-manual-search" type="button">Search</button>
-      </div>
-
-      <article class="manual-answer-card" id="manual-answer-card" aria-live="polite">
-        <div class="maa-header">
-          <div class="maa-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <div class="screen-container">
+        <div class="screen-head">
+          <div class="screen-head-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           </div>
-          <div class="maa-title" id="maa-title">—</div>
+          <div>
+            <h2 class="screen-title">IRPWM &amp; GR Field Manual</h2>
+            <p class="screen-title-te" lang="te">PW మాన్యువల్ · 14 Offline Rules + AI Lookup</p>
+          </div>
         </div>
-        <div class="maa-body" id="maa-body"></div>
-        <div class="maa-source" id="maa-source"></div>
-      </article>
 
-      <section class="quick-rules-section" aria-label="Quick reference rules">
-        <h2 class="sec-title">Quick Reference Rules</h2>
-        <div class="quick-rules-list" id="quick-rules-list"></div>
-      </section>
+        <div class="search-bar">
+          <input type="text" id="manual-search-input" class="search-input" placeholder="Search gauge, fracture, detonators, LWR, SEJ, monsoon..." aria-label="Search IRPWM manual" />
+          <button class="btn-search-icon" id="btn-voice-search" type="button" aria-label="Voice search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button class="btn-primary btn-search-submit" id="btn-manual-search" type="button">Search</button>
+        </div>
+
+        <div class="category-bar" id="manual-category-bar" role="group" aria-label="Filter rules by category">
+          <button type="button" class="cat-btn active" data-cat="ALL">All</button>
+          <button type="button" class="cat-btn" data-cat="EMERGENCY">Emergency</button>
+          <button type="button" class="cat-btn" data-cat="GAUGE">Gauge</button>
+          <button type="button" class="cat-btn" data-cat="TRACK">Track</button>
+          <button type="button" class="cat-btn" data-cat="WEATHER">Weather</button>
+          <button type="button" class="cat-btn" data-cat="PROTECTION">Protection</button>
+        </div>
+
+        <article class="panel manual-answer-card" id="manual-answer-card" aria-live="polite" hidden>
+          <div class="maa-header">
+            <h3 class="maa-title" id="maa-title">—</h3>
+            <button type="button" class="btn-subtle" id="btn-copy-rule">Copy</button>
+          </div>
+          <div class="maa-body" id="maa-body"></div>
+          <div class="maa-source" id="maa-source"></div>
+        </article>
+
+        <section class="quick-rules-section" aria-label="Offline IRPWM reference cards">
+          <div class="rules-head">
+            <h3 class="section-heading">Offline Reference Library</h3>
+            <span class="panel-sub" id="rules-count-label">14 of 14 offline rules</span>
+          </div>
+          <div class="quick-rules-list" id="quick-rules-list"></div>
+        </section>
+      </div>
     </section>
 
   </main>
 
-  <!-- ═══ BOTTOM NAVIGATION ═══ -->
-  <nav class="bottom-nav" role="tablist" aria-label="Main navigation">
-    <button class="nav-btn active" data-screen="train-alert" id="nav-alert" role="tab" aria-selected="true" aria-controls="screen-train-alert" type="button">
-      <span class="nav-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-      <span class="nav-label">Alerts</span>
-    </button>
-    <button class="nav-btn" data-screen="defect" id="nav-defect" role="tab" aria-selected="false" aria-controls="screen-defect" type="button">
-      <span class="nav-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-      <span class="nav-label">Defect</span>
-    </button>
-    <button class="nav-btn" data-screen="diary" id="nav-diary" role="tab" aria-selected="false" aria-controls="screen-diary" type="button">
-      <span class="nav-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
-      <span class="nav-label">Diary</span>
-    </button>
-    <button class="nav-btn" data-screen="weather" id="nav-weather" role="tab" aria-selected="false" aria-controls="screen-weather" type="button">
-      <span class="nav-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
-      <span class="nav-label">Weather</span>
-    </button>
-    <button class="nav-btn" data-screen="manual" id="nav-manual" role="tab" aria-selected="false" aria-controls="screen-manual" type="button">
-      <span class="nav-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
-      <span class="nav-label">Manual</span>
-    </button>
-  </nav>
-
-  <!-- ═══ SETTINGS OVERLAY ═══ -->
-  <div class="settings-overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
-    <div class="settings-sheet">
-      <div class="settings-header">
-        <h2 class="settings-title">Settings</h2>
-        <button class="btn-close-settings" id="btn-close-settings" type="button" aria-label="Close settings">
+  <!-- ═══ EMERGENCY LINE PROTECTION SHEET (SOS) ═══ -->
+  <div class="modal-overlay" id="sos-overlay" role="dialog" aria-modal="true" aria-labelledby="sos-modal-title" hidden>
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title sos-title" id="sos-modal-title">Emergency Line Protection (BG)</h2>
+          <p class="panel-sub" lang="te">అత్యవసర ట్రాక్ రక్షణ · GR 3.62 / 3.78 (100% Offline)</p>
+        </div>
+        <button class="btn-close-modal" id="btn-close-sos" type="button" aria-label="Close emergency sheet">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="settings-body">
-
-        <div class="settings-group">
-          <div class="sg-title">Gang Identity</div>
-          <div class="setting-field"><label class="sf-label" for="setting-mate_name">Mate Name</label><input type="text" id="setting-mate_name" class="sf-input" placeholder="e.g. Ramesh Kumar" autocomplete="name" /></div>
-          <div class="setting-field"><label class="sf-label" for="setting-gang_no">Gang Number</label><input type="text" id="setting-gang_no" class="sf-input" placeholder="e.g. T-47, SKM-02" /></div>
-          <div class="setting-field"><label class="sf-label" for="setting-gang_strength">Gang Strength</label><input type="number" id="setting-gang_strength" class="sf-input" min="1" max="60" inputmode="numeric" /></div>
-          <div class="setting-field"><label class="sf-label" for="setting-section">Section</label><input type="text" id="setting-section" class="sf-input" placeholder="SKM–UPD, Vijayawada Div." /></div>
-        </div>
-
-        <div class="settings-group">
-          <div class="sg-title">Work Section</div>
-          <div class="sf-row">
-            <div class="setting-field"><label class="sf-label" for="setting-work_station_a">From Station</label><input type="text" id="setting-work_station_a" class="sf-input" placeholder="SKM" maxlength="5" /></div>
-            <div class="setting-field"><label class="sf-label" for="setting-work_station_b">To Station</label><input type="text" id="setting-work_station_b" class="sf-input" placeholder="UPD" maxlength="5" /></div>
+      <div class="modal-body">
+        <div class="sos-loc-box">
+          <div>
+            <span class="field-kicker">CURRENT BEAT &amp; COORDINATES</span>
+            <div class="sos-loc-val" id="sos-current-loc">km 293.0 · SKM</div>
           </div>
+          <button type="button" class="btn-primary" id="btn-copy-sos-loc">Copy SMS</button>
         </div>
 
-        <div class="settings-group">
-          <div class="sg-title">AI Configuration (Optional Override)</div>
-          <p class="sg-note">RailRaksha works out-of-the-box via secure server-side AI proxy on both railraksha.tech and railraksha.vercel.app. Only fill these if you want to use your own personal key directly from this browser.</p>
-          <div class="setting-field"><label class="sf-label" for="setting-ai_base_url">API Base URL</label><input type="text" id="setting-ai_base_url" class="sf-input" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" /></div>
-          <div class="setting-field"><label class="sf-label" for="setting-ai_model">Model (or "auto")</label><input type="text" id="setting-ai_model" class="sf-input" placeholder="auto" /></div>
-          <div class="setting-field">
-            <label class="sf-label" for="setting-ai_api_key">Personal API Key</label>
-            <div class="sf-input-wrap">
-              <input type="password" id="setting-ai_api_key" class="sf-input sf-input-mono" placeholder="Leave empty to use server proxy" autocomplete="off" />
-              <button class="btn-toggle-visibility" type="button" data-target="setting-ai_api_key">Show</button>
+        <div class="detonator-box">
+          <div class="field-kicker">BROAD GAUGE DETONATOR PLACEMENT (BOTH SIDES ON DOUBLE LINE)</div>
+          <svg class="detonator-svg" viewBox="0 0 540 92" role="img" aria-label="Broad Gauge detonator protection diagram: obstruction at 0m, 1 detonator at 600m, 3 detonators 10m apart at 1200m, red hand flag at 1245m">
+            <line x1="28" y1="42" x2="512" y2="42" stroke="currentColor" stroke-width="3" opacity="0.45"/>
+            <!-- Obstruction -->
+            <rect x="28" y="28" width="16" height="28" rx="2" fill="#EF4444"/>
+            <text x="36" y="76" text-anchor="middle" class="det-lbl">0 m</text>
+            <text x="36" y="18" text-anchor="middle" class="det-top det-red">OBSTRUCT</text>
+            <!-- 600m -->
+            <circle cx="220" cy="42" r="7" fill="#F59E0B"/>
+            <text x="220" y="76" text-anchor="middle" class="det-lbl">600 m</text>
+            <text x="220" y="18" text-anchor="middle" class="det-top">1 DET</text>
+            <!-- 1200m -->
+            <circle cx="388" cy="42" r="6" fill="#F59E0B"/>
+            <circle cx="404" cy="42" r="6" fill="#F59E0B"/>
+            <circle cx="420" cy="42" r="6" fill="#F59E0B"/>
+            <text x="404" y="76" text-anchor="middle" class="det-lbl">1200 m (10m gap)</text>
+            <text x="404" y="18" text-anchor="middle" class="det-top">3 DETONATORS</text>
+            <!-- 1245m Flagman -->
+            <line x1="496" y1="20" x2="496" y2="54" stroke="#EF4444" stroke-width="2.5"/>
+            <polygon points="496,20 518,26 496,33" fill="#EF4444"/>
+            <text x="496" y="76" text-anchor="middle" class="det-lbl">1245 m</text>
+            <text x="496" y="14" text-anchor="middle" class="det-top det-red">RED FLAG</text>
+          </svg>
+        </div>
+
+        <div class="sos-helplines">
+          <a class="sos-call-card sos-call-pwi" id="sos-pwi-link" href="tel:" hidden>
+            <div>
+              <strong>Section PWI / SSE</strong>
+              <span>Saved in Settings</span>
             </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="sg-title">Weather &amp; Live Train (Optional)</div>
-          <p class="sg-note">Weather uses Open-Meteo for free with no key. Live train feed uses the server proxy when configured on hosting; add your own RailRadar key only if you need direct client-side access.</p>
-          <div class="setting-field">
-            <label class="sf-label" for="setting-owm_api_key">OpenWeatherMap Key (optional)</label>
-            <div class="sf-input-wrap">
-              <input type="password" id="setting-owm_api_key" class="sf-input sf-input-mono" placeholder="Leave empty to use Open-Meteo" autocomplete="off" />
-              <button class="btn-toggle-visibility" type="button" data-target="setting-owm_api_key">Show</button>
+            <span class="sos-num" id="sos-pwi-number">—</span>
+          </a>
+          <a class="sos-call-card" href="tel:1072">
+            <div>
+              <strong>Railway Accident Emergency</strong>
+              <span>Immediate derailment / fracture control</span>
             </div>
-          </div>
-          <div class="setting-field">
-            <label class="sf-label" for="setting-railradar_key">RailRadar API Key (optional)</label>
-            <div class="sf-input-wrap">
-              <input type="password" id="setting-railradar_key" class="sf-input sf-input-mono" placeholder="Leave empty to use server proxy" autocomplete="off" />
-              <button class="btn-toggle-visibility" type="button" data-target="setting-railradar_key">Show</button>
+            <span class="sos-num">1072</span>
+          </a>
+          <a class="sos-call-card" href="tel:182">
+            <div>
+              <strong>RPF Security Helpline</strong>
+              <span>Track tampering / sabotage (GR 3.82)</span>
             </div>
-          </div>
+            <span class="sos-num">182</span>
+          </a>
+          <a class="sos-call-card" href="tel:139">
+            <div>
+              <strong>Indian Railways RailMadad</strong>
+              <span>24×7 unified railway assistance</span>
+            </div>
+            <span class="sos-num">139</span>
+          </a>
         </div>
-
-        <div class="settings-group">
-          <div class="sg-title">Alert Thresholds</div>
-          <p class="sg-note">Danger = Stop work and clear track. Warning = Clear tools. Caution = Prepare to move.</p>
-          <div class="sf-row">
-            <div class="setting-field"><label class="sf-label" for="setting-alert_dist_critical">Danger (km)</label><input type="number" id="setting-alert_dist_critical" class="sf-input" min="1" max="20" step="0.5" inputmode="decimal" /></div>
-            <div class="setting-field"><label class="sf-label" for="setting-alert_min_critical">Danger (min)</label><input type="number" id="setting-alert_min_critical" class="sf-input" min="1" max="30" step="1" inputmode="numeric" /></div>
-          </div>
-          <div class="sf-row">
-            <div class="setting-field"><label class="sf-label" for="setting-alert_dist_warn">Warning (km)</label><input type="number" id="setting-alert_dist_warn" class="sf-input" min="1" max="30" step="0.5" inputmode="decimal" /></div>
-            <div class="setting-field"><label class="sf-label" for="setting-alert_min_warn">Warning (min)</label><input type="number" id="setting-alert_min_warn" class="sf-input" min="1" max="45" step="1" inputmode="numeric" /></div>
-          </div>
-          <div class="sf-row">
-            <div class="setting-field"><label class="sf-label" for="setting-alert_dist_prepare">Caution (km)</label><input type="number" id="setting-alert_dist_prepare" class="sf-input" min="1" max="50" step="0.5" inputmode="decimal" /></div>
-            <div class="setting-field"><label class="sf-label" for="setting-alert_min_prepare">Caution (min)</label><input type="number" id="setting-alert_min_prepare" class="sf-input" min="1" max="60" step="1" inputmode="numeric" /></div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="sg-title">About</div>
-          <div class="about-info">
-            <p><strong>RailRaksha v6.0</strong> — రైల్ రక్ష</p>
-            <p>Offline-first track safety &amp; field assistant for Indian Railways Track Maintainers.</p>
-            <p>Built by <strong>Shaik Vahid Basha</strong> · Aditya University</p>
-            <p>Section: SKM–UPD · Vijayawada Division, South Central Railway</p>
-          </div>
-        </div>
-
-      </div>
-      <div class="settings-footer">
-        <button class="btn-action btn-save-settings" id="btn-save-settings" type="button">Save Settings</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ ANALYZING OVERLAY ═══ -->
-  <div class="analyzing-overlay" id="analyzing-overlay" aria-hidden="true">
+  <!-- ═══ SETTINGS MODAL ═══ -->
+  <div class="modal-overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title" hidden>
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 class="modal-title" id="settings-modal-title">Settings</h2>
+        <button class="btn-close-modal" id="btn-close-settings" type="button" aria-label="Close settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+
+        <div class="edge-status-bar" id="edge-health-status">Checking Cloudflare edge status...</div>
+
+        <div class="settings-group">
+          <h3 class="sg-title">Gang Identity</h3>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-mate_name">Mate Name</label><input type="text" id="setting-mate_name" class="field-input" placeholder="e.g. Gang Mate Name" autocomplete="name" /></div>
+            <div class="form-field"><label class="field-label" for="setting-gang_no">Gang Number</label><input type="text" id="setting-gang_no" class="field-input" placeholder="e.g. SKM-02" /></div>
+          </div>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-gang_strength">Gang Strength</label><input type="number" id="setting-gang_strength" class="field-input" min="1" max="60" inputmode="numeric" /></div>
+            <div class="form-field"><label class="field-label" for="setting-pwi_phone">PWI / SSE Phone</label><input type="tel" id="setting-pwi_phone" class="field-input" placeholder="+91 98..." inputmode="tel" /></div>
+          </div>
+          <div class="form-field"><label class="field-label" for="setting-section">Section Label</label><input type="text" id="setting-section" class="field-input" placeholder="SKM–UPD, Vijayawada Div." /></div>
+        </div>
+
+        <div class="settings-group">
+          <h3 class="sg-title">Work Section &amp; Preferences</h3>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-work_station_a">From Station</label><select id="setting-work_station_a" class="field-input"></select></div>
+            <div class="form-field"><label class="field-label" for="setting-work_station_b">To Station</label><select id="setting-work_station_b" class="field-input"></select></div>
+          </div>
+          <div class="sf-row">
+            <div class="form-field">
+              <label class="field-label" for="setting-voice_lang">Alert Voice</label>
+              <select id="setting-voice_lang" class="field-input">
+                <option value="te+en">Telugu + English</option>
+                <option value="en">English only</option>
+                <option value="te">Telugu only</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="field-label" for="setting-theme">Display Mode</label>
+              <select id="setting-theme" class="field-input">
+                <option value="dark">Industrial Dark</option>
+                <option value="daylight">Outdoor Daylight High-Contrast</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3 class="sg-title">Alert Thresholds</h3>
+          <p class="sg-note">Danger = Clear track immediately. Warning = Clear tools. Prepare = Heads-up caution.</p>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-alert_dist_critical">Danger (km)</label><input type="number" id="setting-alert_dist_critical" class="field-input" min="1" max="20" step="0.5" inputmode="decimal" /></div>
+            <div class="form-field"><label class="field-label" for="setting-alert_min_critical">Danger (min)</label><input type="number" id="setting-alert_min_critical" class="field-input" min="1" max="30" step="1" inputmode="numeric" /></div>
+          </div>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-alert_dist_warn">Warning (km)</label><input type="number" id="setting-alert_dist_warn" class="field-input" min="1" max="30" step="0.5" inputmode="decimal" /></div>
+            <div class="form-field"><label class="field-label" for="setting-alert_min_warn">Warning (min)</label><input type="number" id="setting-alert_min_warn" class="field-input" min="1" max="45" step="1" inputmode="numeric" /></div>
+          </div>
+          <div class="sf-row">
+            <div class="form-field"><label class="field-label" for="setting-alert_dist_prepare">Prepare (km)</label><input type="number" id="setting-alert_dist_prepare" class="field-input" min="1" max="50" step="0.5" inputmode="decimal" /></div>
+            <div class="form-field"><label class="field-label" for="setting-alert_min_prepare">Prepare (min)</label><input type="number" id="setting-alert_min_prepare" class="field-input" min="1" max="60" step="1" inputmode="numeric" /></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3 class="sg-title">Optional Personal API Overrides</h3>
+          <p class="sg-note">RailRaksha routes Cloud AI and live train feeds through Cloudflare edge handlers on railraksha.tech. Weather runs free via Open-Meteo. Leave blank unless supplying your own local key.</p>
+          <div class="form-field"><label class="field-label" for="setting-ai_base_url">AI Base URL</label><input type="text" id="setting-ai_base_url" class="field-input" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" /></div>
+          <div class="form-field"><label class="field-label" for="setting-ai_model">AI Model</label><input type="text" id="setting-ai_model" class="field-input" placeholder="auto" /></div>
+          <div class="form-field">
+            <label class="field-label" for="setting-ai_api_key">Personal AI API Key</label>
+            <div class="sf-input-wrap">
+              <input type="password" id="setting-ai_api_key" class="field-input field-mono" placeholder="Optional — blank uses Cloudflare /api/chat" autocomplete="off" />
+              <button class="btn-toggle-visibility" type="button" data-target="setting-ai_api_key">Show</button>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="field-label" for="setting-railradar_key">Personal RailRadar Key</label>
+            <div class="sf-input-wrap">
+              <input type="password" id="setting-railradar_key" class="field-input field-mono" placeholder="Optional — blank uses Cloudflare /api/live-status" autocomplete="off" />
+              <button class="btn-toggle-visibility" type="button" data-target="setting-railradar_key">Show</button>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="field-label" for="setting-owm_api_key">OpenWeatherMap Key</label>
+            <div class="sf-input-wrap">
+              <input type="password" id="setting-owm_api_key" class="field-input field-mono" placeholder="Optional — blank uses Open-Meteo free" autocomplete="off" />
+              <button class="btn-toggle-visibility" type="button" data-target="setting-owm_api_key">Show</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3 class="sg-title">Offline Data &amp; About</h3>
+          <button type="button" class="btn-secondary btn-full" id="btn-export-backup">Export All Offline Logs (JSON)</button>
+          <div class="about-info">
+            <p><strong>RailRaksha v7.0</strong> — <span lang="te">రైల్ రక్ష</span></p>
+            <p>Built by <strong>Shaik Vahid Basha</strong> · IIT Madras</p>
+            <p>Corridor: Vijayawada (BZA) ↔ Gudur (GDR), SKM–UPD Section, South Central Railway</p>
+            <p class="about-disclaimer">Personal offline-first prototype inspired by field track maintenance work. Not an Indian Railways certified safety instrument; never replaces visual lookout or official IRPWM/GR protection.</p>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary btn-full" id="btn-save-settings" type="button">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ NON-BLOCKING ANALYZING PILL ═══ -->
+  <div class="analyzing-overlay" id="analyzing-overlay" aria-hidden="true" hidden>
     <div class="analyzing-card" role="status" aria-live="polite">
       <div class="spinner-ring" aria-hidden="true"></div>
-      <div class="analyzing-text">Analyzing…</div>
-      <div class="analyzing-sub">Please wait</div>
+      <div>
+        <div class="analyzing-text">Analyzing...</div>
+        <div class="analyzing-sub">Please wait</div>
+      </div>
     </div>
   </div>
 
@@ -639,6 +918,6 @@
     <span class="toast-msg"></span>
   </div>
 
-  <script type="module" src="js/app.js?v=6.0"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

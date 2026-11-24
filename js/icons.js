@@ -81,7 +81,7 @@ export const Icons = {
 // Train type to icon mapping
 export const TrainTypeIcons = {
   RAJDHANI: Icons.crown(16, '#FFD700'),
-  SHATABDI: Icons.lightning(16, '#00D9FF'),
+  SHATABDI: Icons.lightning(16, '#38BDF8'),
   VANDE_BHARAT: Icons.medal(16, '#FF6B00'),
   DURONTO: Icons.wind(16, '#06B6D4'),
   MAIL: Icons.mail(16, '#94A3B8'),

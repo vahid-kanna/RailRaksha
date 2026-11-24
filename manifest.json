@@ -1,13 +1,16 @@
 {
-  "name": "RailRaksha",
+  "id": "/",
+  "name": "RailRaksha \u2014 Railway Track Safety",
   "short_name": "RailRaksha",
-  "description": "AI-Powered Safety & Documentation Platform for Indian Railways Track Workers",
+  "description": "Offline-first railway track safety, bilingual gang diary, defect reporting, and IRPWM assistant for Indian Railways field crews.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0D1B2A",
-  "theme_color": "#FF6F00",
-  "orientation": "portrait",
-  "lang": "te",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
+  "orientation": "portrait-primary",
+  "lang": "en-IN",
+  "dir": "ltr",
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -22,14 +25,44 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
-  "categories": ["utilities", "productivity", "safety"],
+  "categories": [
+    "safety",
+    "productivity",
+    "utilities"
+  ],
   "shortcuts": [
     {
-      "name": "Train Alert",
-      "short_name": "Alert",
+      "name": "Train Alerts & Radar",
+      "short_name": "Alerts",
       "url": "/#train-alert",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Log Track Defect",
+      "short_name": "Defect",
+      "url": "/#defect",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Gang Diary (Telugu)",
+      "short_name": "Diary",
+      "url": "/#diary",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

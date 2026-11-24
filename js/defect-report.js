@@ -1,46 +1,164 @@
 /**
- * RailRaksha — Track Defect Photo Report (defect-report.js)
- * Captures/compresses track photos, classifies defects via AI proxy,
- * maps to IRPWM codes, stores offline in IndexedDB, and formats PWI reports.
+ * RailRaksha — Track Defect Reporter v7.0 (defect-report.js)
+ *
+ * Dual-mode reliability:
+ *   - Online: Multimodal AI IRPWM vision classification via Cloudflare /api/chat
+ *   - Offline / Instant: Built-in 8-template IRPWM manual field classifier so track
+ *     defects are always documented, GPS-tagged, saved to IndexedDB, and shareable.
  */
 
-import { saveDefectReport, getDefectReports, updateDefectStatus } from './db.js';
+import { saveDefectReport, getDefectReports, updateDefectStatus, deleteDefectReport, getISTDateISO } from './db.js';
 import { callAI } from './ai-engine.js';
 import { Icons } from './icons.js';
 
+export const OFFLINE_DEFECT_PRESETS = [
+  {
+    id: 'rail-fracture',
+    defectType: 'Complete Rail Fracture',
+    severity: 'CRITICAL',
+    irpwmCode: 'RF-01',
+    speedRestriction: 'Stop Dead (0 km/h)',
+    irpwmReference: 'IRPWM Para 2.6.1 & GR 3.62',
+    immediateAction: 'Stop all trains immediately. Protect both sides with detonators (600 m & 1200 m). Inform Station Master and PWI/SSE.',
+    description: 'Complete transverse rail fracture observed across rail head/web/foot.',
+  },
+  {
+    id: 'weld-crack',
+    defectType: 'Cracked Rail / AT Weld',
+    severity: 'HIGH',
+    irpwmCode: 'WC-02',
+    speedRestriction: '30 km/h Caution Order',
+    irpwmReference: 'IRPWM Para 2.6.1 / USFD Manual',
+    immediateAction: 'Clamp with joggle fishplates and C-clamps immediately. Impose 30 km/h caution order and report to PWI/USFD team.',
+    description: 'Visible hairline or progressive crack at rail or Alumino-Thermic (AT) weld joint.',
+  },
+  {
+    id: 'sun-kink',
+    defectType: 'LWR Buckling / Sun Kink',
+    severity: 'CRITICAL',
+    irpwmCode: 'LWR-09',
+    speedRestriction: 'Stop Dead (0 km/h)',
+    irpwmReference: 'IRPWM Para 2.9 — LWR Manual',
+    immediateAction: 'Stop all train movements immediately. Protect line both directions. Do not disturb ballast until rail cools; call PWI/SSE.',
+    description: 'Lateral misalignment / buckling detected on Long Welded Rail under thermal stress.',
+  },
+  {
+    id: 'missing-erc',
+    defectType: 'Missing / Loose ERC Fastenings',
+    severity: 'MEDIUM',
+    irpwmCode: 'FN-03',
+    speedRestriction: 'None (replace immediately)',
+    irpwmReference: 'IRPWM Para 3.3',
+    immediateAction: 'Re-drive loose Elastic Rail Clips (ERC), replace missing liners/rubber pads, and inspect adjoining 10 sleepers.',
+    description: 'Missing or unseated Elastic Rail Clips / GFN liners reducing rail-seat toe load.',
+  },
+  {
+    id: 'broken-sleeper',
+    defectType: 'Broken / Cracked PSC Sleeper',
+    severity: 'HIGH',
+    irpwmCode: 'SL-04',
+    speedRestriction: '30 km/h if >10% clustered',
+    irpwmReference: 'IRPWM Para 3.2',
+    immediateAction: 'Mark defective sleeper with white paint, verify gauge across adjacent sleepers, and schedule replacement with PWI.',
+    description: 'PSC concrete sleeper showing >3 transverse cracks, damaged insert, or through-fracture.',
+  },
+  {
+    id: 'gauge-variation',
+    defectType: 'Gauge Variation Beyond Limit',
+    severity: 'HIGH',
+    irpwmCode: 'GV-05',
+    speedRestriction: '30 km/h Caution Order',
+    irpwmReference: 'IRPWM Para 2.4.3',
+    immediateAction: 'Verify BG gauge (1676 mm; straight ±6 mm, curve -6/+15 mm). Re-gauge fastenings and notify PWI immediately.',
+    description: 'Measured track gauge outside permissible Broad Gauge tolerance limits.',
+  },
+  {
+    id: 'ballast-void',
+    defectType: 'Ballast Void / Pumping Joint',
+    severity: 'MEDIUM',
+    irpwmCode: 'BV-06',
+    speedRestriction: '45 km/h if severe settlement',
+    irpwmReference: 'IRPWM Para 2.5',
+    immediateAction: 'Pack affected sleepers with clean ballast, improve shoulder drainage, and log for tamping machine attention.',
+    description: 'Mud pumping, fouled ballast, or void under sleeper rail seat causing track settlement.',
+  },
+  {
+    id: 'monsoon-scour',
+    defectType: 'Monsoon Waterlogging / Scour',
+    severity: 'CRITICAL',
+    irpwmCode: 'MN-11',
+    speedRestriction: 'Stop Dead if water at rail foot',
+    irpwmReference: 'IRPWM Para 2.11',
+    immediateAction: 'Inspect embankment slope, bridge waterway, and ballast toe. Stop trains immediately if water reaches rail foot or scours formation.',
+    description: 'Heavy waterlogging, embankment erosion, or formation scour observed during rainfall.',
+  },
+];
+
 let capturedImageBase64 = null;
-let capturedImageMime = "image/jpeg";
+let capturedImageMime = 'image/jpeg';
 let elements = {};
+let activeFilter = 'ALL';
 
 export function initDefectReport(els) {
   elements = els;
+  renderOfflinePresets();
   loadDefectHistory();
 
-  elements.btnCamera?.addEventListener("click", (e) => {
+  elements.btnCamera?.addEventListener('click', (e) => {
     e.stopPropagation();
     elements.fileInput?.click();
   });
 
-  elements.btnUpload?.addEventListener("click", (e) => {
+  elements.btnUpload?.addEventListener('click', (e) => {
     e.stopPropagation();
     elements.uploadInput?.click();
   });
 
-  elements.fileInput?.addEventListener("change", handleFileSelect);
-  elements.uploadInput?.addEventListener("change", handleFileSelect);
-  elements.btnAnalyze?.addEventListener("click", analyzeDefect);
-  elements.btnShareReport?.addEventListener("click", shareReport);
-  elements.btnNewDefect?.addEventListener("click", resetDefectForm);
+  elements.fileInput?.addEventListener('change', handleFileSelect);
+  elements.uploadInput?.addEventListener('change', handleFileSelect);
+  elements.btnAnalyze?.addEventListener('click', analyzeDefect);
+  elements.btnRetake?.addEventListener('click', resetPhotoOnly);
+  elements.btnToggleManualDefect?.addEventListener('click', toggleManualPanel);
+  elements.btnLogOfflineDefect?.addEventListener('click', submitOfflineDefect);
+  elements.btnShareReport?.addEventListener('click', shareReport);
+  elements.btnNewDefect?.addEventListener('click', resetDefectForm);
+  elements.btnExportDefects?.addEventListener('click', exportDefectsTxt);
+
+  elements.defectFilterBar?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-filter]');
+    if (!btn) return;
+    activeFilter = btn.dataset.filter;
+    elements.defectFilterBar.querySelectorAll('[data-filter]').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === activeFilter);
+    });
+    loadDefectHistory();
+  });
+}
+
+function renderOfflinePresets() {
+  const sel = elements.offlineDefectSelect;
+  if (!sel) return;
+  sel.innerHTML = OFFLINE_DEFECT_PRESETS.map(p =>
+    `<option value="${p.id}">${p.defectType} (${p.severity} · ${p.irpwmCode})</option>`
+  ).join('');
+}
+
+function toggleManualPanel(forceOpen = null) {
+  const panel = elements.manualDefectPanel;
+  if (!panel) return;
+  const nextHidden = forceOpen === true ? false : forceOpen === false ? true : !panel.hidden;
+  panel.hidden = nextHidden;
+  elements.btnToggleManualDefect?.setAttribute('aria-expanded', String(!nextHidden));
 }
 
 function handleFileSelect(e) {
   const file = e.target.files?.[0];
   if (!file) return;
-  capturedImageMime = "image/jpeg";
+  capturedImageMime = 'image/jpeg';
   const reader = new FileReader();
   reader.onload = (ev) => {
     compressImage(ev.target.result, 1280, 0.8, (compressedDataUrl) => {
-      capturedImageBase64 = compressedDataUrl.split(",")[1];
+      capturedImageBase64 = compressedDataUrl.split(',')[1];
       displayPreview(compressedDataUrl);
     });
   };
@@ -60,11 +178,11 @@ function compressImage(dataUrl, maxDimension, quality, callback) {
         height = maxDimension;
       }
     }
-    const canvas = document.createElement("canvas");
+    const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-    callback(canvas.toDataURL("image/jpeg", quality));
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+    callback(canvas.toDataURL('image/jpeg', quality));
   };
   img.onerror = () => callback(dataUrl);
   img.src = dataUrl;
@@ -73,20 +191,30 @@ function compressImage(dataUrl, maxDimension, quality, callback) {
 function displayPreview(dataUrl) {
   if (elements.imagePreview) {
     elements.imagePreview.src = dataUrl;
-    elements.imagePreview.style.display = "block";
+    elements.imagePreview.hidden = false;
   }
-  elements.captureZone?.classList.add("has-photo");
-  if (elements.capturePlaceholder) elements.capturePlaceholder.style.display = "none";
-  if (elements.btnAnalyze) elements.btnAnalyze.style.display = "flex";
+  elements.captureZone?.classList.add('has-photo');
+  if (elements.capturePlaceholder) elements.capturePlaceholder.hidden = true;
+  if (elements.photoActionRow) elements.photoActionRow.hidden = false;
+}
+
+function resetPhotoOnly() {
+  capturedImageBase64 = null;
+  if (elements.imagePreview) { elements.imagePreview.hidden = true; elements.imagePreview.src = ''; }
+  elements.captureZone?.classList.remove('has-photo');
+  if (elements.capturePlaceholder) elements.capturePlaceholder.hidden = false;
+  if (elements.photoActionRow) elements.photoActionRow.hidden = true;
+  if (elements.fileInput) elements.fileInput.value = '';
+  if (elements.uploadInput) elements.uploadInput.value = '';
 }
 
 async function analyzeDefect() {
   if (!capturedImageBase64) {
-    showToast("Capture or upload a track photo first", "warn");
+    showToast('Capture or upload a track photo first', 'warn');
     return;
   }
 
-  showAnalyzingOverlay(true, "Analyzing Track Photo", "Checking for IRPWM track defects...");
+  showAnalyzingOverlay(true, 'Analyzing Track Photo', 'Checking IRPWM defect categories...');
 
   const prompt = `You are a senior Indian Railways Permanent Way (P-Way) engineer.
 Analyze this photo to determine whether it shows railway track or infrastructure.
@@ -126,46 +254,72 @@ If the photo DOES show railway track/infrastructure, respond ONLY in this exact 
       mimeType: capturedImageMime,
     });
 
-    if (!analysis || typeof analysis !== "object" || !analysis.defectType) {
-      throw new Error("Unexpected response format from AI");
+    if (!analysis || typeof analysis !== 'object' || !analysis.defectType) {
+      throw new Error('Unexpected response format from AI');
     }
 
     showAnalyzingOverlay(false);
-    displayAnalysis(analysis);
+    displayAnalysis({ ...analysis, mode: 'AI Vision' });
   } catch (err) {
     showAnalyzingOverlay(false);
-    showToast("Analysis failed: " + err.message, "error");
+    toggleManualPanel(true);
+    const reason = err.code === 'offline'
+      ? 'Offline — use Quick Offline IRPWM Classifier below'
+      : 'AI unavailable — opened Offline IRPWM Classifier below';
+    showToast(reason, 'warn');
   }
 }
 
+function submitOfflineDefect() {
+  const presetId = elements.offlineDefectSelect?.value;
+  const preset = OFFLINE_DEFECT_PRESETS.find(p => p.id === presetId) || OFFLINE_DEFECT_PRESETS[0];
+  const note = elements.offlineDefectNotes?.value?.trim();
+  const analysis = {
+    defectType: preset.defectType,
+    severity: preset.severity,
+    irpwmCode: preset.irpwmCode,
+    confidence: 'FIELD VERIFIED',
+    description: note ? `${preset.description} Field note: ${note}` : preset.description,
+    immediateAction: preset.immediateAction,
+    reportingRequired: true,
+    speedRestriction: preset.speedRestriction,
+    irpwmReference: preset.irpwmReference,
+    generalInfo: capturedImageBase64 ? 'Photo attached locally on device' : 'Manual field observation (no photo)',
+    mode: 'Offline IRPWM',
+  };
+  displayAnalysis(analysis);
+  toggleManualPanel(false);
+  showToast('Offline IRPWM classification ready — tap Save & Share', 'ok');
+}
+
 function displayAnalysis(analysis) {
-  elements.defectAnalysisCard?.classList.add("visible");
+  if (elements.defectAnalysisCard) elements.defectAnalysisCard.hidden = false;
 
   if (elements.defectTypeBadge) {
     const cls = {
-      CRITICAL: "severity-critical",
-      HIGH: "severity-high",
-      MEDIUM: "severity-medium",
-      LOW: "severity-low",
-      INFO: "severity-info",
+      CRITICAL: 'sev-critical',
+      HIGH: 'sev-high',
+      MEDIUM: 'sev-medium',
+      LOW: 'sev-low',
+      INFO: 'sev-info',
     };
-    elements.defectTypeBadge.className = `defect-type-badge ${cls[analysis.severity] || "severity-low"}`;
+    elements.defectTypeBadge.className = `defect-type-badge ${cls[analysis.severity] || 'sev-low'}`;
     elements.defectTypeBadge.innerHTML = `${severityIcon(analysis.severity)} <span>${escapeHtml(analysis.defectType)}</span>`;
   }
 
   const loc = getCurrentLocationText();
   setText(elements.detailSeverity, analysis.severity);
-  setText(elements.detailConfidence, analysis.confidence);
+  setText(elements.detailConfidence, `${analysis.confidence || '—'}${analysis.mode ? ` · ${analysis.mode}` : ''}`);
   setText(elements.detailIRPWM, analysis.irpwmCode);
   setText(elements.detailSpeed, analysis.speedRestriction);
   setText(elements.detailGPS, loc);
-  setText(elements.detailTime, new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+  setText(elements.detailTime, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
   setText(elements.detailDescription, analysis.description);
   setText(elements.recommendedAction, analysis.immediateAction);
-  if (elements.irpwmReference) elements.irpwmReference.textContent = `IRPWM Ref: ${analysis.irpwmReference || "N/A"}`;
+  if (elements.irpwmReference) elements.irpwmReference.textContent = `Reference: ${analysis.irpwmReference || 'IRPWM'}`;
 
   if (elements.detailGeneralInfo) {
-    const row = elements.detailGeneralInfo.closest(".detail-row");
+    const row = elements.detailGeneralInfo.closest('.detail-row');
     if (analysis.generalInfo) {
       elements.detailGeneralInfo.textContent = analysis.generalInfo;
       if (row) row.hidden = false;
@@ -174,15 +328,18 @@ function displayAnalysis(analysis) {
     }
   }
 
-  elements.defectAnalysisCard.dataset.analysis = JSON.stringify({
-    ...analysis,
-    gps: loc,
-    timestamp: new Date().toISOString(),
-  });
+  if (elements.defectAnalysisCard) {
+    elements.defectAnalysisCard.dataset.analysis = JSON.stringify({
+      ...analysis,
+      gps: loc,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   if (elements.btnShareReport) {
-    elements.btnShareReport.style.display = analysis.reportingRequired === false ? "none" : "flex";
+    elements.btnShareReport.hidden = analysis.reportingRequired === false;
   }
+  elements.defectAnalysisCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function severityIcon(severity) {
@@ -196,16 +353,16 @@ function severityIcon(severity) {
 }
 
 function setText(el, text) {
-  if (el) el.textContent = text || "—";
+  if (el) el.textContent = text || '—';
 }
 
 function getCurrentLocationText() {
   if (window._currentLocationLabel) return window._currentLocationLabel;
   const pos = window._currentWorkerPos;
   if (pos && Number.isFinite(pos.lat) && Number.isFinite(pos.lon)) {
-    return `${pos.label || ""} (${pos.lat.toFixed(4)}°N, ${pos.lon.toFixed(4)}°E)`.trim();
+    return `${pos.label || ''} (${pos.lat.toFixed(4)}°N, ${pos.lon.toFixed(4)}°E)`.trim();
   }
-  return "km 293.0 · SKM (Default Beat)";
+  return 'km 293.0 · SKM (Default Beat)';
 }
 
 async function shareReport() {
@@ -223,114 +380,164 @@ async function shareReport() {
     irpwmCode: analysis.irpwmCode,
     speedRestriction: analysis.speedRestriction,
     immediateAction: analysis.immediateAction,
-    status: "REPORTED",
+    irpwmReference: analysis.irpwmReference,
+    mode: analysis.mode || 'Field',
+    status: 'REPORTED',
   });
-  loadDefectHistory();
+  await loadDefectHistory();
 
   if (navigator.share) {
     try {
-      await navigator.share({ title: "Track Defect Report — RailRaksha", text: reportText });
-      showToast("Report shared and logged", "ok");
+      await navigator.share({ title: 'Track Defect Report — RailRaksha', text: reportText });
+      showToast('Defect logged offline and shared', 'ok');
       return;
     } catch {}
   }
 
   try {
     await navigator.clipboard.writeText(reportText);
-    showToast("Report copied to clipboard and logged", "ok");
+    showToast('Defect logged offline and copied to clipboard', 'ok');
   } catch {
-    showToast("Report saved to local history", "ok");
+    showToast('Defect saved to offline history', 'ok');
   }
 }
 
-function generateReportText(analysis) {
-  const now = new Date(analysis.timestamp);
-  const dateStr = now.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  const gangNo = localStorage.getItem("gang_no") || "—";
-  const mateName = localStorage.getItem("mate_name") || "—";
-  const section = localStorage.getItem("section") || "SKM–UPD Section";
+export function generateReportText(analysis) {
+  const now = new Date(analysis.timestamp || Date.now());
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const gangNo = localStorage.getItem('gang_no') || '—';
+  const mateName = localStorage.getItem('mate_name') || '—';
+  const section = localStorage.getItem('section') || 'SKM–UPD Section';
 
   return [
-    "TRACK DEFECT REPORT — RailRaksha",
+    'TRACK DEFECT REPORT — RailRaksha',
     `Date: ${dateStr} | Time: ${timeStr}`,
     `Gang: ${gangNo} | Mate: ${mateName}`,
     `Section: ${section}`,
-    `Location: ${analysis.gps}`,
-    "---",
+    `Location: ${analysis.gps || '—'}`,
+    '---',
     `Defect: ${analysis.defectType}`,
-    `Severity: ${analysis.severity} | IRPWM: ${analysis.irpwmCode}`,
-    `Speed Restriction: ${analysis.speedRestriction}`,
-    `Observation: ${analysis.description}`,
-    `Immediate Action: ${analysis.immediateAction}`,
-    `Reference: ${analysis.irpwmReference}`,
-  ].join("\n");
+    `Severity: ${analysis.severity} | IRPWM Code: ${analysis.irpwmCode || 'N/A'}`,
+    `Speed Restriction: ${analysis.speedRestriction || 'None'}`,
+    `Observation: ${analysis.description || '—'}`,
+    `Immediate Action: ${analysis.immediateAction || '—'}`,
+    `Reference: ${analysis.irpwmReference || 'IRPWM'}`,
+  ].join('\n');
 }
 
 async function loadDefectHistory() {
-  const reports = await getDefectReports();
+  const all = await getDefectReports();
   if (!elements.defectHistoryList) return;
-  elements.defectHistoryList.innerHTML = "";
+
+  const reports = activeFilter === 'ALL'
+    ? all
+    : activeFilter === 'FIXED'
+    ? all.filter(r => r.status === 'FIXED')
+    : all.filter(r => r.status !== 'FIXED');
+
+  elements.defectHistoryList.innerHTML = '';
 
   if (reports.length === 0) {
     elements.defectHistoryList.innerHTML = `
       <div class="empty-state">
-        <div class="es-title">No defects logged yet</div>
-        <div class="es-sub">Captured and shared track reports are saved offline here.</div>
+        <div class="es-title">${all.length === 0 ? 'No defects logged yet' : 'No matching defects'}</div>
+        <div class="es-sub">${all.length === 0 ? 'AI vision and offline IRPWM reports save here automatically.' : 'Change the filter above to view other records.'}</div>
       </div>`;
     return;
   }
 
-  reports.slice(0, 12).forEach(r => {
-    const item = document.createElement("div");
-    item.className = "defect-history-item";
-    const statusClass = { OPEN: "dstatus-open", REPORTED: "dstatus-reported", FIXED: "dstatus-fixed" }[r.status] || "dstatus-open";
+  reports.slice(0, 20).forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    const statusClass = { OPEN: 'st-open', REPORTED: 'st-reported', FIXED: 'st-fixed' }[r.status] || 'st-open';
+    const dateLabel = new Date(r.createdAt || r.timestamp || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
     item.innerHTML = `
-      <div class="defect-thumb">${severityIcon(r.severity)}</div>
-      <div class="defect-info">
-        <div class="defect-name">${escapeHtml(r.defectType)}</div>
-        <div class="defect-loc">${escapeHtml(r.gps || "SKM Section")} · ${new Date(r.createdAt || r.date).toLocaleDateString("en-IN")}</div>
+      <div class="hi-lead">${severityIcon(r.severity)}</div>
+      <div class="hi-body">
+        <div class="hi-title">${escapeHtml(r.defectType)}</div>
+        <div class="hi-meta">${escapeHtml(r.irpwmCode || 'IRPWM')} · ${escapeHtml(r.gps || 'SKM Section')} · ${dateLabel}</div>
+        ${r.speedRestriction ? `<div class="hi-sub">Restriction: ${escapeHtml(r.speedRestriction)}</div>` : ''}
       </div>
-      <button type="button" class="defect-status-badge ${statusClass}" title="Toggle fixed status">${escapeHtml(r.status)}</button>`;
-    item.querySelector("button")?.addEventListener("click", async () => {
-      const next = r.status === "FIXED" ? "REPORTED" : "FIXED";
-      await updateDefectStatus(r.id, next);
+      <div class="hi-actions">
+        <button type="button" class="status-pill ${statusClass}" data-action="status" title="Cycle defect status">${escapeHtml(r.status)}</button>
+        <button type="button" class="icon-btn-sm" data-action="copy" aria-label="Copy defect report" title="Copy report">Copy</button>
+        <button type="button" class="icon-btn-sm icon-btn-danger" data-action="delete" aria-label="Delete defect report" title="Delete">Del</button>
+      </div>`;
+
+    item.querySelector('[data-action="status"]')?.addEventListener('click', async () => {
+      const cycle = { OPEN: 'REPORTED', REPORTED: 'FIXED', FIXED: 'OPEN' };
+      await updateDefectStatus(r.id, cycle[r.status] || 'FIXED');
       loadDefectHistory();
     });
+
+    item.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(generateReportText(r));
+        showToast('Report copied to clipboard', 'ok');
+      } catch {
+        showToast('Unable to access clipboard', 'warn');
+      }
+    });
+
+    item.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+      await deleteDefectReport(r.id);
+      loadDefectHistory();
+      showToast('Defect removed', 'info');
+    });
+
     elements.defectHistoryList.appendChild(item);
   });
 }
 
+async function exportDefectsTxt() {
+  const reports = await getDefectReports();
+  if (reports.length === 0) {
+    showToast('No defect reports to export', 'warn');
+    return;
+  }
+  const content = reports.map(generateReportText).join('\n\n==============================\n\n');
+  downloadTextFile(`railraksha-defects-${getISTDateISO()}.txt`, content);
+  showToast(`Exported ${reports.length} defect report(s)`, 'ok');
+}
+
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function resetDefectForm() {
-  capturedImageBase64 = null;
-  if (elements.imagePreview) { elements.imagePreview.style.display = "none"; elements.imagePreview.src = ""; }
-  elements.captureZone?.classList.remove("has-photo");
-  if (elements.capturePlaceholder) elements.capturePlaceholder.style.display = "flex";
-  if (elements.btnAnalyze) elements.btnAnalyze.style.display = "none";
-  if (elements.btnShareReport) elements.btnShareReport.style.display = "none";
-  elements.defectAnalysisCard?.classList.remove("visible");
-  if (elements.fileInput) elements.fileInput.value = "";
-  if (elements.uploadInput) elements.uploadInput.value = "";
+  resetPhotoOnly();
+  if (elements.offlineDefectNotes) elements.offlineDefectNotes.value = '';
+  if (elements.defectAnalysisCard) elements.defectAnalysisCard.hidden = true;
 }
 
 function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str ?? "";
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
   return div.innerHTML;
 }
 
-function showAnalyzingOverlay(show, title = "", sub = "") {
-  const overlay = document.getElementById("analyzing-overlay");
+function showAnalyzingOverlay(show, title = '', sub = '') {
+  const overlay = document.getElementById('analyzing-overlay');
   if (!overlay) return;
-  overlay.classList.toggle("active", show);
+  overlay.hidden = !show;
+  overlay.setAttribute('aria-hidden', String(!show));
   if (show) {
-    const t = overlay.querySelector(".analyzing-text");
-    const s = overlay.querySelector(".analyzing-sub");
+    const t = overlay.querySelector('.analyzing-text');
+    const s = overlay.querySelector('.analyzing-sub');
     if (t) t.textContent = title;
     if (s) s.textContent = sub;
   }
 }
 
-function showToast(msg, type = "info") {
-  window.dispatchEvent(new CustomEvent("showToast", { detail: { msg, type } }));
+function showToast(msg, type = 'info') {
+  window.dispatchEvent(new CustomEvent('showToast', { detail: { msg, type } }));
 }

@@ -113,3 +113,108 @@ test('voice: one utterance at a time, CRITICAL pre-empts, CRITICAL repeats every
   now = 25000; orch.process({ primary: row(LEVEL.CRITICAL), threats: [row(LEVEL.CRITICAL)], events: [] });
   assert.equal(spoken.length, 6, 'CRITICAL repeat at 20 s');
 });
+
+
+/* ── v7.0 Extended Enterprise Verification Suite ─────────────────────────── */
+import { resolveAIProvider, normalizeRailRadarPayload, handleHealth, handleChat, handleLiveStatus } from '../worker/handlers.js';
+import { getISTDateISO } from '../js/db.js';
+import { buildOfflineDiaryEntry } from '../js/gang-diary.js';
+import { estimateRailTempC } from '../js/weather-alert.js';
+import { OFFLINE_DEFECT_PRESETS } from '../js/defect-report.js';
+import { QUICK_RULES } from '../js/pw-manual.js';
+
+test('IST date helper rolls over at 18:30 UTC (00:00 IST)', () => {
+  // 2026-11-23 20:00:00 UTC == 2026-11-24 01:30:00 IST
+  const utcLateNight = Date.parse('2026-11-23T20:00:00Z');
+  assert.equal(getISTDateISO(utcLateNight), '2026-11-24');
+  // 2026-11-23 18:29:00 UTC == 2026-11-23 23:59:00 IST
+  const utcBeforeMidnightIST = Date.parse('2026-11-23T18:29:00Z');
+  assert.equal(getISTDateISO(utcBeforeMidnightIST), '2026-11-23');
+});
+
+test('Offline Gang Diary formatter extracts materials, defects & safety cleanly', () => {
+  const entry = buildOfflineDiaryEntry(
+    'Packed 18 PSC sleepers between km 292 and 293. Tightened 30 ERC clips and replaced liners. Lookout man posted with red flag. Minor rail weld crack observed.',
+    { dateStr: '24 November 2026', present: 24, total: 25, section: 'SKM–UPD' }
+  );
+  assert.match(entry.workDone, /^• /);
+  assert.match(entry.materialsUsed, /ERC clips/i);
+  assert.match(entry.materialsUsed, /PSC sleepers/i);
+  assert.match(entry.defectsObserved, /crack/i);
+  assert.match(entry.safetyMeasures, /Lookout man/i);
+  assert.equal(entry.structuredBy, 'Offline Formatter');
+});
+
+test('LWR rail thermal estimation reflects solar peak vs night', () => {
+  const summerNoonIST = new Date('2026-05-15T08:00:00Z'); // 13:30 IST
+  const summerNightIST = new Date('2026-05-15T19:00:00Z'); // 00:30 IST
+  const noonRail = estimateRailTempC(42, summerNoonIST);
+  const nightRail = estimateRailTempC(30, summerNightIST);
+  assert.ok(noonRail >= 65, `Expected midday summer rail temp >= 65°C, got ${noonRail}`);
+  assert.ok(nightRail < 40, `Expected night rail temp < 40°C, got ${nightRail}`);
+});
+
+test('Cloudflare Worker handlers: /api/health, provider resolution, validation & RailRadar v1 normalization', async () => {
+  // Provider priority
+  assert.equal(resolveAIProvider({}), null);
+  assert.equal(resolveAIProvider({ GEMINI_API_KEY: 'test', BYNARA_API_KEY: 'b' }).name, 'gemini');
+  assert.equal(resolveAIProvider({ AI_API_KEY: 'x', GEMINI_API_KEY: 'y' }).name, 'custom');
+
+  // Health response
+  const hResp = await handleHealth(new Request('https://railraksha.tech/api/health'), { GEMINI_API_KEY: 'dummy' });
+  assert.equal(hResp.status, 200);
+  const hBody = await hResp.json();
+  assert.equal(hBody.status, 'ok');
+  assert.equal(hBody.services.ai.configured, true);
+  assert.equal(hBody.services.ai.provider, 'gemini');
+  assert.equal(hBody.services.liveTrains.configured, false);
+
+  // /api/chat unconfigured returns clean 503 with code
+  const cResp = await handleChat(
+    new Request('https://railraksha.tech/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    }),
+    {}
+  );
+  assert.equal(cResp.status, 503);
+  const cBody = await cResp.json();
+  assert.equal(cBody.error.code, 'ai_not_configured');
+
+  // /api/live-status invalid train returns 400; missing key returns 501
+  const badTrain = await handleLiveStatus(new Request('https://railraksha.tech/api/live-status?train=abc'), {});
+  assert.equal(badTrain.status, 400);
+  const noKey = await handleLiveStatus(new Request('https://railraksha.tech/api/live-status?train=12711'), {});
+  assert.equal(noKey.status, 501);
+
+  // RailRadar v1 normalization
+  const norm = normalizeRailRadarPayload({
+    success: true,
+    data: {
+      trainNumber: '12711',
+      status: 'running',
+      delayMinutes: 14,
+      lastUpdatedAt: '2026-11-24T09:15:00+05:30',
+      currentLocation: { stationCode: 'OGL', speed: 108, hasDeparted: true },
+    },
+  });
+  assert.equal(norm.last_station_code, 'OGL');
+  assert.equal(norm.delay_min, 14);
+  assert.equal(norm.speed_kmh, 108);
+  assert.equal(norm.event, 'DEPARTED');
+});
+
+test('Offline libraries & 47-train corridor timetable integrity', () => {
+  assert.equal(OFFLINE_DEFECT_PRESETS.length, 8);
+  assert.equal(QUICK_RULES.length, 14);
+  assert.ok(TRAINS.length >= 45, `Expected >=45 trains, got ${TRAINS.length}`);
+  for (const tr of TRAINS) {
+    assert.ok(/^(\d{5}|FREIGHT-\d{2})$/.test(tr.no), `Invalid train no: ${tr.no}`);
+    assert.ok(tr.dir === 'UP' || tr.dir === 'DN', `Invalid dir for ${tr.no}`);
+    assert.ok(Array.isArray(tr.stops) && tr.stops.length >= 2, `Missing stops for ${tr.no}`);
+    for (const [code] of tr.stops) {
+      assert.ok(STATION_BY_CODE[code], `Unknown station code ${code} in train ${tr.no}`);
+    }
+  }
+});
