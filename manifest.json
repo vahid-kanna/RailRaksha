@@ -1,68 +1,21 @@
 {
-  "id": "/",
-  "name": "RailRaksha \u2014 Railway Track Safety",
+  "name": "RailRaksha — Field Safety Instrument",
   "short_name": "RailRaksha",
-  "description": "Offline-first railway track safety, bilingual gang diary, defect reporting, and IRPWM assistant for Indian Railways field crews.",
+  "description": "Live-first Indian Railways corridor alert instrument, IRPWM defect inspector, voice gang diary & LWR thermal monitor.",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "background_color": "#0B0E14",
-  "theme_color": "#0B0E14",
   "orientation": "portrait-primary",
-  "lang": "en-IN",
-  "dir": "ltr",
+  "background_color": "#D4DCE5",
+  "theme_color": "#D4DCE5",
+  "categories": ["utilities", "productivity"],
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "categories": [
-    "safety",
-    "productivity",
-    "utilities"
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "shortcuts": [
-    {
-      "name": "Train Alerts & Radar",
-      "short_name": "Alerts",
-      "url": "/#train-alert",
-      "icons": [
-        {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "Log Track Defect",
-      "short_name": "Defect",
-      "url": "/#defect",
-      "icons": [
-        {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "Gang Diary (Telugu)",
-      "short_name": "Diary",
-      "url": "/#diary",
-      "icons": [
-        {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    }
+    { "name": "Defect Inspector", "url": "/#defect", "description": "Inspect track defect with AI or offline IRPWM" },
+    { "name": "Gang Diary", "url": "/#diary", "description": "Record shift voice diary" },
+    { "name": "Weather & Thermal", "url": "/#weather", "description": "Check LWR steel rail temperature" },
+    { "name": "IRPWM Manual", "url": "/#manual", "description": "Search offline IRPWM rules" }
   ]
 }

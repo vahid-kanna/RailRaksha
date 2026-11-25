@@ -1,25 +1,18 @@
 /**
- * RailRaksha — Cloudflare Worker Entrypoint (worker/index.js)
- *
- * Routes /api/* to edge handlers and delegates everything else to Static Assets.
+ * RailRaksha — Cloudflare Worker Entrypoint v8.0 (worker/index.js)
  */
 
-import { handleHealth, handleChat, handleLiveStatus } from './handlers.js';
+import { handleHealth, handleChat, handleLiveStatus, handleCorridorLive } from './handlers.js';
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === '/api/health') {
-      return handleHealth(request, env);
-    }
-    if (path === '/api/chat') {
-      return handleChat(request, env);
-    }
-    if (path === '/api/live-status') {
-      return handleLiveStatus(request, env);
-    }
+    if (path === '/api/health')        return handleHealth(request, env);
+    if (path === '/api/chat')          return handleChat(request, env);
+    if (path === '/api/corridor-live') return handleCorridorLive(request, env);
+    if (path === '/api/live-status')   return handleLiveStatus(request, env);
 
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);

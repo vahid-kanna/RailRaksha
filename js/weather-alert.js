@@ -90,12 +90,14 @@ export async function loadWeatherData(manual = false) {
     payload.fetchedAt = Date.now();
     try { await dbPut(STORES.WEATHER_CACHE, { key: CACHE_KEY, ...payload }); } catch {}
     renderWeather(payload, false);
+    window.dispatchEvent(new CustomEvent("railraksha:weather-updated", { detail: payload }));
     if (manual) showToast('Weather telemetry updated', 'ok');
   } catch {
     try {
       const cached = await dbGet(STORES.WEATHER_CACHE, CACHE_KEY);
       if (cached && Number.isFinite(cached.temp)) {
         renderWeather(cached, true);
+        window.dispatchEvent(new CustomEvent("railraksha:weather-updated", { detail: cached }));
         if (manual) showToast('Offline — showing last cached telemetry', 'warn');
         return;
       }
@@ -212,10 +214,10 @@ function renderWeather(data, isCached) {
 
 function getWeatherIcon(main) {
   const map = {
-    Clear: Icons.sun(26, '#F59E0B'),
+    Clear: Icons.sun(26, '#E5481F'),
     Clouds: Icons.cloud(26, '#94A3B8'),
     Rain: Icons.rain(26, '#38BDF8'),
-    Thunderstorm: Icons.lightning(26, '#F59E0B'),
+    Thunderstorm: Icons.lightning(26, '#E5481F'),
     Drizzle: Icons.rain(26, '#38BDF8'),
     Fog: Icons.cloud(26, '#64748B'),
   };
@@ -230,7 +232,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   if (railTemp >= 65) {
     risks.push({
       level: 'high',
-      icon: Icons.sun(18, '#EF4444'),
+      icon: Icons.sun(18, '#C81E1E'),
       title: 'Sun Kink / LWR Buckling Hazard',
       desc: `Estimated rail steel temperature ~${railTemp}°C (ambient ${temp}°C) exceeds the 65°C (Td+20°C) BG LWR hot-weather threshold.`,
       action: 'Deploy hot-weather patrolmen at curves and SEJs. Do not open ballast beds during peak heat. Notify PWI.',
@@ -239,7 +241,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   } else if (railTemp >= 55) {
     risks.push({
       level: 'medium',
-      icon: Icons.sun(18, '#F59E0B'),
+      icon: Icons.sun(18, '#E5481F'),
       title: 'Elevated Rail Thermal Stress',
       desc: `Estimated rail temperature ~${railTemp}°C. Monitor LWR curves, SEJ gaps, and weld zones for lateral creep.`,
       action: 'Verify SEJ clearances and avoid heavy ballast disturbance in afternoon hours.',
@@ -250,7 +252,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   if (rainfall >= 30) {
     risks.push({
       level: 'high',
-      icon: Icons.siren(18, '#EF4444'),
+      icon: Icons.siren(18, '#C81E1E'),
       title: 'Heavy Rainfall — Waterlogging & Scour',
       desc: `Current rainfall ${rainfall.toFixed(1)} mm/hr. Low-lying cuttings, culverts, and bridge approaches require immediate patrol.`,
       action: 'Inspect bridge waterways and embankment toes. Stop trains immediately if floodwater reaches rail foot.',
@@ -271,7 +273,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   if (peakWind >= 55) {
     risks.push({
       level: 'high',
-      icon: Icons.wind(18, '#EF4444'),
+      icon: Icons.wind(18, '#C81E1E'),
       title: 'Coastal High-Wind / Cyclone Precaution',
       desc: `Wind / gusts at ${peakWind} km/h. High risk of OHE mast debris and uprooted trees fouling track.`,
       action: 'Suspend trolley/overhead work, secure loose tools, and shelter crew above 80 km/h.',
@@ -282,7 +284,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   if (upcomingRainMm >= 15 && upcomingRainHrs != null) {
     risks.push({
       level: 'medium',
-      icon: Icons.rain(18, '#F59E0B'),
+      icon: Icons.rain(18, '#E5481F'),
       title: `Heavy Rain Forecast (~${upcomingRainHrs}h ahead)`,
       desc: `Expected peak rainfall ~${upcomingRainMm.toFixed(1)} mm/hr within 12 hours.`,
       action: 'Close open sleeper packing and clear side drains before rainfall arrives.',
@@ -293,7 +295,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   if (risks.length === 0) {
     risks.push({
       level: 'low',
-      icon: Icons.check(18, '#22C55E'),
+      icon: Icons.check(18, 'currentColor'),
       title: 'Track Weather Conditions Normal',
       desc: `Ambient ${temp}°C (est. rail ~${railTemp}°C), humidity ${humidity}%, wind ${windSpeed} km/h. No active weather patrol triggers.`,
       action: 'Proceed with normal maintenance under standard lookout and safety rules.',

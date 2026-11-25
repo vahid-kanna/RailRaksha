@@ -1,12 +1,9 @@
 /**
- * RailRaksha — Unified AI Engine v7.0 (ai-engine.js)
+ * RailRaksha — Unified AI Engine v8.0 (ai-engine.js)
  *
- * Routing priority (100% Cloudflare-native, zero Vercel coupling):
- *   1. If the user entered a personal API key in Settings -> call their OpenAI-compatible endpoint directly.
- *   2. Otherwise -> call same-origin Cloudflare Worker endpoint `POST /api/chat`.
- *
- * Surfaces structured error codes (`offline`, `ai_not_configured`, `timeout`, `http_error`)
- * so calling modules can activate deterministic offline fallbacks gracefully.
+ * Routing priority (100% Cloudflare-native):
+ *   1. If user entered a personal API key in Settings -> call their OpenAI-compatible endpoint.
+ *   2. Otherwise -> call same-origin Cloudflare Worker `POST /api/chat` (Gemini 3 Flash failover).
  */
 
 export function getAISettings() {
@@ -19,7 +16,6 @@ export function getAISettings() {
   };
 }
 
-/** Check Cloudflare edge /api/health status safely without throwing. */
 export async function checkServerHealth() {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return { reachable: false, offline: true, services: null };
@@ -38,9 +34,6 @@ export async function checkServerHealth() {
   }
 }
 
-/**
- * Universal AI completion supporting both text and multimodal vision payloads.
- */
 export async function callAI({ prompt, imageBase64 = null, mimeType = 'image/jpeg' }) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const err = new Error('Device is offline');
@@ -68,7 +61,7 @@ export async function callAI({ prompt, imageBase64 = null, mimeType = 'image/jpe
       { role: 'user', content: userContent },
     ],
     temperature: 0.2,
-    max_tokens: 2048,
+    max_tokens: 3072,
   };
 
   if (hasUserKey) {
@@ -77,7 +70,7 @@ export async function callAI({ prompt, imageBase64 = null, mimeType = 'image/jpe
       url += '/chat/completions';
     }
     if (!requestBody.model || requestBody.model === 'auto') {
-      requestBody.model = url.includes('googleapis.com') ? 'gemini-2.5-flash' : 'gpt-4o-mini';
+      requestBody.model = url.includes('googleapis.com') ? 'gemini-3-flash-preview' : 'gpt-4o-mini';
     }
     return executeRequest(url, requestBody, {
       'Content-Type': 'application/json',

@@ -181,7 +181,12 @@ function updateDiaryHeader() {
   const gangNo = localStorage.getItem('gang_no') || 'Gang —';
   const mateName = localStorage.getItem('mate_name') || 'Mate —';
   const section = localStorage.getItem('section') || 'SKM–UPD Section';
-  if (elements.diaryGangInfo) elements.diaryGangInfo.textContent = `${gangNo} · ${mateName} · ${section}`;
+  if (elements.diaryGangInfo) {
+    const stA = window.getConfig?.('work_station_a') || 'SKM';
+    const stB = window.getConfig?.('work_station_b') || 'UPD';
+    const rawGang = (localStorage.getItem('gang_no') || '').trim();
+    elements.diaryGangInfo.textContent = rawGang ? `${rawGang} · ${stA}–${stB}` : `${stA}–${stB}`;
+  }
 }
 
 function updateAttendance() {

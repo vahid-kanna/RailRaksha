@@ -1,15 +1,11 @@
 /**
- * RailRaksha — Main Application Controller v7.0 (app.js)
+ * RailRaksha — Main Application Controller v8.0 (app.js)
  *
- * Enterprise offline-first railway field safety console:
- *   - 100% Cloudflare-native edge proxies (/api/live-status, /api/chat, /api/health)
- *   - Direction-aware Track Selector (UP / DOWN / BOTH) + 14-station SCR Beat Picker
- *   - 4-State Resilient GPS Tracker with Along-Track Kalman Filter
- *   - Dual-Rail Corridor Radar SVG with dynamic nearby station landmarks
- *   - Built-in Safety Drill Simulator (clearly badged SIMULATION DRILL — NOT LIVE TRAFFIC)
- *   - Emergency Line Protection Sheet (GR 3.62 detonator schematic + 1-tap GPS SMS copy + quick dial)
- *   - Outdoor Daylight High-Contrast & Industrial Field Dark themes
- *   - Persistent IndexedDB Shift Alert Audit Log + Full JSON Data Export
+ * Live-Data-First Corridor Safety Instrument:
+ *   - Primary Live Feed: Cloudflare Worker `/api/corridor-live` (OGL, SKM, NLR RailRadar v1 boards)
+ *   - Strict Offline Fallback: 53-train corridor schedule activates automatically only when offline/unreached
+ *   - Physical Tactile Instrument UI: 240px brushed-aluminum proximity dial, 3-layer pushable keys,
+ *     physical rocker switches, knurled closure meter, etched 7-bar traffic sparkline & debossed screens
  */
 
 import { STATIONS, STATION_BY_CODE, kmToLatLon, nearestStation } from './corridor.js';
@@ -38,50 +34,35 @@ const store = {
   get mode() { return localStorage.getItem('rr.trackMode') || TRACK_MODE.BOTH; },
   set mode(v) { localStorage.setItem('rr.trackMode', v); },
   get lang() { return getConfig('voice_lang') || 'te+en'; },
-  get theme() { return getConfig('theme') || 'dark'; },
+  get theme() { return getConfig('theme') === 'night' ? 'night' : 'light'; },
   set theme(v) { localStorage.setItem('theme', v); },
+  get voiceOn() { return getConfig('voice_enabled') !== '0'; },
+  set voiceOn(v) { localStorage.setItem('voice_enabled', v ? '1' : '0'); },
+  get preferLive() { return getConfig('prefer_live') !== '0'; },
+  set preferLive(v) { localStorage.setItem('prefer_live', v ? '1' : '0'); },
 };
 
-// ── Live Train Fetcher (Cloudflare Worker /api/live-status + optional personal key) ──
+// ── Live Corridor Fetcher (Cloudflare Worker `/api/corridor-live` FIRST) ─────
+async function fetchCorridorLive(signal, forceFresh = false) {
+  const url = forceFresh ? '/api/corridor-live?fresh=1' : '/api/corridor-live';
+  const r = await fetch(url, { signal, cache: 'no-store' });
+  if (!r.ok) throw new Error(`Corridor feed HTTP ${r.status}`);
+  return await r.json();
+}
+
 async function fetchLive(trainNo, runDateISO, signal) {
   if (!/^\d{4,5}$/.test(String(trainNo))) throw new Error('Non-NTES freight slot');
   const qs = `train=${encodeURIComponent(trainNo)}&date=${encodeURIComponent(runDateISO)}`;
-
-  // 1. Same-origin Cloudflare Worker proxy
-  try {
-    const r = await fetch(`/api/live-status?${qs}`, { signal, cache: 'no-store' });
-    if (r.ok) return await r.json();
-  } catch {}
-
-  // 2. Direct RailRadar v1 API only if user configured their own personal key in Settings
-  const railradarKey = getConfig('railradar_key');
-  if (railradarKey) {
-    const resp = await fetch(`https://api.railradar.in/v1/trains/${trainNo}/live?date=${encodeURIComponent(runDateISO)}`, {
-      headers: { 'Authorization': `Bearer ${railradarKey}`, 'Accept': 'application/json' },
-      signal,
-    });
-    if (resp.ok) {
-      const raw = await resp.json();
-      const d = raw?.data || raw;
-      const cur = d?.currentLocation || d?.currentStation || d?.lastStation || {};
-      const code = String(cur.stationCode || cur.code || d?.currentStationCode || '').toUpperCase();
-      if (code) {
-        return {
-          last_station_code: code,
-          delay_min: Number(d?.delayMinutes ?? d?.delay ?? cur.delayMinutes ?? 0) || 0,
-          actual_departure: cur.actualDeparture || cur.actualDepartureTime || null,
-          speed_kmh: Number.isFinite(Number(cur.speed)) ? Number(cur.speed) : null,
-          updated_at: d?.lastUpdatedAt || d?.updatedAt || new Date().toISOString(),
-        };
-      }
-    }
-  }
-  throw new Error('Schedule mode active');
+  const r = await fetch(`/api/live-status?${qs}`, { signal, cache: 'no-store' });
+  if (r.ok) return await r.json();
+  throw new Error('Live status unavailable');
 }
 
 // ── Safety Engines ───────────────────────────────────────────────────────────
 const gps = new GpsTracker();
-const live = new LiveTrainService({ fetchLive });
+const live = new LiveTrainService({ fetchCorridorLive, fetchLive });
+live.preferLive = store.preferLive;
+
 const engine = new ThreatEngine();
 const siren = new SirenManager();
 const voice = new VoiceManager({ lang: store.lang });
@@ -94,18 +75,18 @@ const orchestrator = new AlertOrchestrator({
 engine.setMode(store.mode);
 
 let armed = false;
+let gpsWatching = false;
 let wakeLock = null;
 let timerInterval = null;
-let activeTrafficTab = 'trains'; // 'trains' | 'log'
+let activeTrafficTab = 'trains';
 let lastLoggedThreatKey = null;
+let drillState = null;
 
-// ── Simulation Drill State (strictly isolated from live traffic) ─────────────
-let drillState = null; // { startedAtMs, dir, startKm, speedKmh, accel }
-
+// ── Simulation Drill (Strictly Isolated from Live Traffic) ───────────────────
 function startDrill() {
   const worker = gps.getPosition();
   if (!worker) {
-    showToast('Select a work beat before starting a drill', 'warn');
+    showToast('Select a beat chip before starting a drill', 'warn');
     return;
   }
   const dir = engine.mode === TRACK_MODE.DN ? 'DN' : 'UP';
@@ -113,13 +94,13 @@ function startDrill() {
   drillState = {
     startedAtMs: Date.now(),
     dir,
-    startKm: worker.km - sign * 9.5, // starts 9.5 km upstream
+    startKm: worker.km - sign * 9.5,
     speedKmh: 115,
-    accel: 3.0, // compressed drill clock (~115 km/h * 3x -> traverses 9.5 km in ~99s)
+    accel: 3.0,
   };
   updateDrillButton();
   loop();
-  showToast('Safety drill active — simulated train approaching on radar', 'info');
+  showToast('Simulation drill active — synthetic approach running', 'info');
 }
 
 function stopDrill(silent = false) {
@@ -129,17 +110,17 @@ function stopDrill(silent = false) {
   if (!armed) siren.set(LEVEL.NONE);
   updateDrillButton();
   loop();
-  if (!silent) showToast('Safety drill ended', 'info');
+  if (!silent) showToast('Simulation drill ended', 'info');
 }
 
 function updateDrillButton() {
   const btn = document.getElementById('btn-drill');
   const banner = document.getElementById('drill-banner');
   if (btn) {
-    btn.classList.toggle('active', Boolean(drillState));
+    btn.classList.toggle('pressed', Boolean(drillState));
     btn.setAttribute('aria-pressed', String(Boolean(drillState)));
     const lbl = btn.querySelector('.drill-btn-label');
-    if (lbl) lbl.textContent = drillState ? 'End Drill' : 'Safety Drill';
+    if (lbl) lbl.textContent = drillState ? 'End Drill' : 'Run Drill';
   }
   if (banner) banner.hidden = !drillState;
 }
@@ -150,11 +131,10 @@ function getDrillTrainState(worker, nowMs) {
   const elapsedH = ((nowMs - drillState.startedAtMs) / 3600000) * drillState.accel;
   const kmNominal = drillState.startKm + sign * drillState.speedKmh * elapsedH;
 
-  // Auto-finish drill 2.5 km past worker
   const distPast = (kmNominal - worker.km) * sign;
   if (distPast > 2.5) {
     stopDrill(true);
-    showToast('Safety drill completed — simulated train passed worksite', 'ok');
+    showToast('Drill complete — simulated train cleared beat', 'ok');
     return null;
   }
 
@@ -188,33 +168,46 @@ function syncEngineConfig() {
   engine.cfg.warnS      = (getConfigNum('alert_min_warn')     || 5) * 60;
   engine.cfg.prepareS   = (getConfigNum('alert_min_prepare')  || 10) * 60;
   voice.lang = store.lang;
+  live.preferLive = store.preferLive;
 }
 
-// ── Theme Management ─────────────────────────────────────────────────────────
+// ── Theme (Cool Titanium Light vs Machined Gunmetal Night) ───────────────────
 function applyTheme(theme) {
-  const mode = theme === 'daylight' ? 'daylight' : 'dark';
+  const mode = theme === 'night' ? 'night' : 'light';
   document.documentElement.dataset.theme = mode;
   store.theme = mode;
   const metaTheme = document.querySelector('meta[name="theme-color"]');
-  if (metaTheme) metaTheme.setAttribute('content', mode === 'daylight' ? '#F1F5F9' : '#0B0E14');
+  if (metaTheme) metaTheme.setAttribute('content', mode === 'night' ? '#1B222C' : '#D4DCE5');
 
   const btn = document.getElementById('btn-theme');
   if (btn) {
-    btn.setAttribute('aria-label', mode === 'daylight' ? 'Switch to dark field mode' : 'Switch to outdoor daylight high-contrast mode');
-    btn.setAttribute('title', mode === 'daylight' ? 'Field Dark Mode' : 'Outdoor Daylight Mode');
-    btn.innerHTML = mode === 'daylight'
-      ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
-      : `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+    btn.setAttribute('aria-label', mode === 'night' ? 'Switch to Cool Titanium daylight finish' : 'Switch to Night Gunmetal finish');
+    btn.setAttribute('title', mode === 'night' ? 'Cool Titanium (Day)' : 'Gunmetal (Night Shift)');
+    btn.innerHTML = mode === 'night'
+      ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+      : `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
   }
 }
 
-// ── Network Connectivity Status ──────────────────────────────────────────────
-function updateNetworkBadge() {
-  const badge = document.getElementById('net-badge');
-  const text = document.getElementById('net-badge-text');
-  const online = navigator.onLine !== false;
-  if (badge) badge.className = `badge-status ${online ? 'badge-ok' : 'badge-warn'}`;
-  if (text) text.textContent = online ? 'ONLINE' : 'OFFLINE · LOCAL READY';
+// ── Top Bar Weather Chip (keyless Open-Meteo quick glance) ───────────────────
+async function fetchQuickWeatherChip() {
+  if (navigator.onLine === false) return;
+  try {
+    const pos = window._currentWorkerPos || { lat: 15.238, lon: 80.027 };
+    const r = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}&current=temperature_2m`,
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!r.ok) return;
+    const d = await r.json();
+    const t = d?.current?.temperature_2m;
+    if (Number.isFinite(t)) updateTopWeatherChip(Math.round(t));
+  } catch {}
+}
+
+function updateTopWeatherChip(tempC) {
+  const el = document.getElementById('top-weather-temp');
+  if (el && Number.isFinite(tempC)) el.textContent = `${Math.round(tempC)}°`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -224,7 +217,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   syncEngineConfig();
   await openDB();
 
-  // Default to SKM beat on first launch so radar & timetable work immediately
   if (!gps.manual) {
     const defaultCode = STATION_BY_CODE[getConfig('work_station_a')] ? getConfig('work_station_a') : 'SKM';
     gps.setManualBeat(defaultCode, 0);
@@ -232,38 +224,43 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   populateStationSelects();
   loadSettings();
-  updateHeaderName();
-  updateNetworkBadge();
   setupNavigation();
   setupSettings();
   setupSOSModal();
   setupToastSystem();
   bindTrackSelector();
   bindBeatPicker();
+  bindHardwareRockers();
   setupSessionButton();
   setupDrillButton();
   setupAcknowledgeButton();
   setupRefreshTrainsButton();
   setupTrafficTabs();
 
+  // Top weather chip opens Weather screen
+  document.getElementById('top-weather-chip')?.addEventListener('click', () => navigateTo('weather', true));
+  window.addEventListener('railraksha:weather-updated', (e) => {
+    if (Number.isFinite(e.detail?.temp)) updateTopWeatherChip(e.detail.temp);
+  });
+
+  // Theme toggle
   document.getElementById('btn-theme')?.addEventListener('click', () => {
-    const next = store.theme === 'daylight' ? 'dark' : 'daylight';
+    const next = store.theme === 'night' ? 'light' : 'night';
     applyTheme(next);
     const sel = document.getElementById('setting-theme');
     if (sel) sel.value = next;
-    showToast(next === 'daylight' ? 'Outdoor Daylight High-Contrast enabled' : 'Industrial Field Dark mode enabled', 'info');
+    showToast(next === 'night' ? 'Night Gunmetal finish active' : 'Cool Titanium finish active', 'info');
   });
 
   window.addEventListener('online', () => {
-    updateNetworkBadge();
-    showToast('Connection restored — live feeds available', 'ok');
+    showToast('Online — syncing live corridor trains', 'ok');
+    pollCorridorNow(false);
   });
   window.addEventListener('offline', () => {
-    updateNetworkBadge();
-    showToast('Offline mode active — local timetable, diary, defects & IRPWM ready', 'warn');
+    showToast('Offline — switched to local corridor timetable', 'warn');
+    loop();
   });
 
-  // Escape closes any open modal
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeSettings();
@@ -271,29 +268,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Initial route from hash (supports PWA manifest shortcuts like /#defect, /#diary)
   const initialHash = window.location.hash.replace(/^#/, '');
   const validScreens = new Set(['train-alert', 'defect', 'diary', 'weather', 'manual']);
-  if (validScreens.has(initialHash)) {
-    navigateTo(initialHash, false);
-  }
+  if (validScreens.has(initialHash)) navigateTo(initialHash, false);
 
-  // 1 Hz safety loop
+  // 1 Hz instrument update loop
   setInterval(loop, 1000);
 
-  // Live API poll loop (only when online)
-  const pollNow = () => {
-    if (navigator.onLine === false) return;
+  // Live-Data-First Corridor Poll (immediate + every 45s while online)
+  const pollCorridorNow = async (forceFresh = false) => {
+    if (navigator.onLine === false || !live.preferLive) return;
     const w = gps.getPosition();
-    if (w?.km != null) live.poll(w.km);
+    await live.poll(w?.km ?? 293, Date.now(), forceFresh);
+    loop();
   };
-  pollNow();
-  setInterval(pollNow, 20000);
+  window._pollCorridorNow = pollCorridorNow;
+  pollCorridorNow(false);
+  setInterval(() => pollCorridorNow(false), 45000);
+
+  // Quick ambient temp for top bar chip
+  fetchQuickWeatherChip();
 
   loop();
   renderAlertAuditLog();
 
-  // Register Service Worker with clean update handling
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       reg.addEventListener('updatefound', () => {
@@ -301,7 +299,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         nw?.addEventListener('statechange', () => {
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
             nw.postMessage({ type: 'SKIP_WAITING' });
-            showToast('RailRaksha updated to latest offline build', 'info');
           }
         });
       });
@@ -309,7 +306,78 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ── Session & Drill Controls ─────────────────────────────────────────────────
+// ── Hardware Rocker Switches (Live Feed, Voice Audio, GPS Watch) ─────────────
+function bindHardwareRockers() {
+  const liveBtn = document.getElementById('toggle-live-feed');
+  const voiceBtn = document.getElementById('toggle-voice');
+  const gpsBtn = document.getElementById('toggle-gps');
+
+  const syncRockers = () => {
+    if (liveBtn) {
+      liveBtn.classList.toggle('on', live.preferLive);
+      liveBtn.setAttribute('aria-checked', String(live.preferLive));
+    }
+    if (voiceBtn) {
+      voiceBtn.classList.toggle('on', store.voiceOn);
+      voiceBtn.setAttribute('aria-checked', String(store.voiceOn));
+      const cap = document.getElementById('voice-status-cap');
+      if (cap) cap.textContent = store.voiceOn ? (store.lang === 'en' ? 'English' : store.lang === 'te' ? 'Telugu' : 'Telugu + EN') : 'Muted';
+      const vu = document.getElementById('audio-vu');
+      if (vu) vu.classList.toggle('vu-off', !store.voiceOn);
+      const iw = document.getElementById('voice-icon-well');
+      if (iw) iw.classList.toggle('well-lit', store.voiceOn);
+    }
+    if (gpsBtn) {
+      gpsBtn.classList.toggle('on', gpsWatching);
+      gpsBtn.setAttribute('aria-checked', String(gpsWatching));
+      const iw = document.getElementById('gps-icon-well');
+      if (iw) iw.classList.toggle('well-lit', gpsWatching);
+    }
+  };
+  window._syncRockers = syncRockers;
+  syncRockers();
+
+  liveBtn?.addEventListener('click', () => {
+    store.preferLive = !store.preferLive;
+    live.preferLive = store.preferLive;
+    navigator.vibrate?.(25);
+    syncRockers();
+    if (live.preferLive) {
+      window._pollCorridorNow?.(false);
+      showToast('Live RailRadar corridor feed enabled', 'ok');
+    } else {
+      showToast('Offline corridor timetable fallback selected', 'info');
+    }
+    loop();
+  });
+
+  voiceBtn?.addEventListener('click', () => {
+    store.voiceOn = !store.voiceOn;
+    if (!store.voiceOn) {
+      siren.set(LEVEL.NONE);
+      try { window.speechSynthesis?.cancel(); } catch {}
+    }
+    navigator.vibrate?.(25);
+    syncRockers();
+    showToast(store.voiceOn ? 'Voice & siren audio armed' : 'Audio muted (visual alerts active)', 'info');
+  });
+
+  gpsBtn?.addEventListener('click', () => {
+    gpsWatching = !gpsWatching;
+    navigator.vibrate?.(25);
+    if (gpsWatching) {
+      gps.start();
+      showToast('Live GPS corridor tracking enabled', 'info');
+    } else {
+      gps.stop();
+      showToast('Locked to manual beat station', 'info');
+    }
+    syncRockers();
+    loop();
+  });
+}
+
+// ── Session & Control Keys ───────────────────────────────────────────────────
 function setupSessionButton() {
   document.getElementById('session-mega-btn')?.addEventListener('click', toggleSession);
 }
@@ -327,16 +395,24 @@ function setupAcknowledgeButton() {
     orchestrator.acknowledge();
     navigator.vibrate?.(60);
     loop();
-    showToast('Siren silenced temporarily (critical voice stays active)', 'info');
+    showToast('Siren silenced briefly (critical voice stays armed)', 'info');
   });
 }
 
 function setupRefreshTrainsButton() {
-  document.getElementById('btn-refresh-trains')?.addEventListener('click', () => {
-    const w = gps.getPosition();
-    if (w?.km != null && navigator.onLine !== false) live.poll(w.km);
-    loop();
-    showToast(navigator.onLine === false ? 'Offline schedule recalculated' : 'Corridor traffic refreshed', 'info');
+  document.getElementById('btn-refresh-trains')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-refresh-trains');
+    btn?.classList.add('pressed');
+    if (navigator.onLine === false || !live.preferLive) {
+      loop();
+      showToast('Offline schedule recalculated', 'info');
+    } else {
+      showToast('Syncing live OGL · SKM · NLR boards...', 'info');
+      await window._pollCorridorNow?.(true);
+      const fs = live.feedStatus();
+      showToast(fs.state === 'LIVE' ? `Live sync complete — ${fs.liveCount} trains tracked` : 'Live sync delayed — fallback active', fs.state === 'LIVE' ? 'ok' : 'warn');
+    }
+    setTimeout(() => btn?.classList.remove('pressed'), 280);
   });
 }
 
@@ -374,7 +450,6 @@ async function activateSession() {
   try {
     if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
   } catch {}
-
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission().catch(() => {});
   }
@@ -383,38 +458,35 @@ async function activateSession() {
   }
 
   armed = true;
+  gpsWatching = true;
   document.body.dataset.armed = 'true';
   gps.start();
+  window._syncRockers?.();
 
   await setSetting('work_session_active', true);
   await setSetting('session_start_time', new Date().toISOString());
 
   const btn = document.getElementById('session-mega-btn');
-  btn?.classList.remove('session-off');
-  btn?.classList.add('session-on');
+  btn?.classList.add('pressed');
   btn?.setAttribute('aria-pressed', 'true');
-
-  const iconEl = document.getElementById('smb-icon');
-  if (iconEl) iconEl.innerHTML = Icons.shield(20, '#22C55E');
-  const dotEl = document.getElementById('smb-dot');
-  if (dotEl) dotEl.className = 'smb-status-dot dot-on';
   const titleEl = document.getElementById('smb-title');
-  if (titleEl) titleEl.textContent = 'MONITORING ACTIVE';
-  const subEl = document.getElementById('smb-sub');
-  if (subEl) subEl.textContent = 'Sirens, Telugu/English voice & GPS armed';
-  const smbRight = document.getElementById('smb-right');
-  if (smbRight) smbRight.hidden = false;
+  if (titleEl) titleEl.textContent = 'Armed';
+  const timerEl = document.getElementById('smb-timer');
+  if (timerEl) { timerEl.hidden = false; timerEl.textContent = '00:00'; }
 
   startSessionTimer();
   loop();
-  showToast('Work session armed — safety audio & GPS active', 'ok');
+  showToast('Shift armed — proximity audio, haptics & GPS active', 'ok');
 }
 
 async function deactivateSession() {
   armed = false;
+  gpsWatching = false;
   document.body.dataset.armed = 'false';
   gps.stop();
   siren.set(LEVEL.NONE);
+  window._syncRockers?.();
+
   if (wakeLock) {
     try { await wakeLock.release(); } catch {}
     wakeLock = null;
@@ -423,32 +495,16 @@ async function deactivateSession() {
   await setSetting('session_start_time', null);
 
   const btn = document.getElementById('session-mega-btn');
-  btn?.classList.remove('session-on', 'session-danger');
-  btn?.classList.add('session-off');
+  btn?.classList.remove('pressed');
   btn?.setAttribute('aria-pressed', 'false');
-
-  const iconEl = document.getElementById('smb-icon');
-  if (iconEl) iconEl.innerHTML = Icons.shield(20, 'currentColor');
-  const dotEl = document.getElementById('smb-dot');
-  if (dotEl) dotEl.className = 'smb-status-dot dot-off';
   const titleEl = document.getElementById('smb-title');
-  if (titleEl) titleEl.textContent = 'START WORK SESSION';
-  const subEl = document.getElementById('smb-sub');
-  if (subEl) subEl.textContent = 'Tap on track to arm sirens, voice & live GPS';
-  const smbRight = document.getElementById('smb-right');
-  if (smbRight) smbRight.hidden = true;
-
-  const timeStr = new Date().toLocaleTimeString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const smbLast = document.getElementById('smb-last');
-  if (smbLast) smbLast.textContent = `Last session ended at ${timeStr} IST`;
+  if (titleEl) titleEl.textContent = 'Arm Shift';
+  const timerEl = document.getElementById('smb-timer');
+  if (timerEl) timerEl.hidden = true;
 
   clearInterval(timerInterval);
   loop();
-  showToast('Work session ended', 'info');
+  showToast('Shift disarmed', 'info');
 }
 
 function startSessionTimer() {
@@ -462,19 +518,20 @@ function startSessionTimer() {
     const timerEl = document.getElementById('smb-timer');
     if (timerEl) {
       timerEl.textContent = h > 0
-        ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+        ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
         : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
   }, 1000);
 }
 
-// ── Track Selector & Beat Picker ─────────────────────────────────────────────
+// ── Track Mode & Horizontal Beat Chip Row ────────────────────────────────────
 function bindTrackSelector() {
   document.querySelectorAll('[data-track]').forEach(btn => {
     btn.addEventListener('click', () => {
       engine.setMode(btn.dataset.track);
+      engine.mem.clear();
       store.mode = btn.dataset.track;
-      navigator.vibrate?.(30);
+      navigator.vibrate?.(25);
       renderTrackSelector();
       loop();
     });
@@ -484,56 +541,53 @@ function bindTrackSelector() {
 
 function renderTrackSelector() {
   document.querySelectorAll('[data-track]').forEach(b => {
-    b.setAttribute('aria-checked', String(b.dataset.track === engine.mode));
+    const active = b.dataset.track === engine.mode;
+    b.setAttribute('aria-checked', String(active));
+    b.classList.toggle('pressed', active);
   });
   document.body.dataset.track = engine.mode;
 }
 
+// Order core SKM–UPD beat stations first for instant thumb reach, followed by full corridor
+const BEAT_ORDER = ['SKM', 'UPD', 'INGR', 'TGU', 'OGL', 'KVZ', 'NLR', 'GDR', 'CLX', 'TEL', 'BZA', 'SRZ', 'BTTR', 'VKT'];
+
 function bindBeatPicker() {
   const grid = document.getElementById('beat-grid');
   if (grid) {
-    grid.innerHTML = STATIONS.map(s => `
-      <button type="button" class="beat" data-code="${s.code}">
-        <b>${s.code}</b>
-        <span lang="te">${s.te}</span>
-        <i>km ${s.km}</i>
+    const ordered = BEAT_ORDER.map(c => STATION_BY_CODE[c]).filter(Boolean);
+    grid.innerHTML = ordered.map(s => `
+      <button type="button" class="beat-chip" data-code="${s.code}" title="${s.name} · km ${s.km}">
+        <span class="chip-pilot" aria-hidden="true"></span>
+        <span>${s.code}</span>
       </button>`).join('');
+
     grid.addEventListener('click', e => {
       const b = e.target.closest('[data-code]');
       if (!b) return;
       gps.setManualBeat(b.dataset.code);
-      navigator.vibrate?.(30);
+      engine.mem.clear();
+      navigator.vibrate?.(25);
       highlightSelectedBeat();
       loop();
-      showToast(`Beat set to ${b.dataset.code} (km ${STATION_BY_CODE[b.dataset.code]?.km})`, 'ok');
+      showToast(`Beat set to ${b.dataset.code} · km ${STATION_BY_CODE[b.dataset.code]?.km}`, 'ok');
     });
   }
   highlightSelectedBeat();
 
-  document.getElementById('nudge-minus')?.addEventListener('click', () => { gps.nudgeManual(-0.5); loop(); });
-  document.getElementById('nudge-plus')?.addEventListener('click', () => { gps.nudgeManual(+0.5); loop(); });
-  document.getElementById('btn-use-gps')?.addEventListener('click', () => {
-    gps.start();
-    showToast('Requesting high-accuracy corridor GPS...', 'info');
-  });
-
-  const toggle = document.getElementById('beat-toggle');
-  const panel = document.getElementById('beat-panel');
-  toggle?.addEventListener('click', () => {
-    if (!panel) return;
-    panel.hidden = !panel.hidden;
-    toggle.setAttribute('aria-expanded', String(!panel.hidden));
-  });
+  document.getElementById('nudge-minus')?.addEventListener('click', () => { gps.nudgeManual(-0.5); engine.mem.clear(); loop(); });
+  document.getElementById('nudge-plus')?.addEventListener('click', () => { gps.nudgeManual(+0.5); engine.mem.clear(); loop(); });
 }
 
 function highlightSelectedBeat() {
   const activeCode = gps.manual?.code;
-  document.querySelectorAll('#beat-grid .beat').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.code === activeCode);
+  document.querySelectorAll('#beat-grid .beat-chip').forEach(btn => {
+    const sel = btn.dataset.code === activeCode;
+    btn.classList.toggle('pressed', sel);
+    btn.setAttribute('aria-pressed', String(sel));
   });
 }
 
-// ── 1 Hz Safety Loop ──────────────────────────────────────────────────────────
+// ── 1 Hz Safety & Telemetry Render Loop ──────────────────────────────────────
 function loop() {
   const now = Date.now();
   const worker = gps.getPosition();
@@ -555,15 +609,18 @@ function loop() {
       : worker.label;
   }
 
-  const trains = live.getTrainStates(worker?.km);
+  const trains = live.getTrainStates(worker?.km, now);
   const drillTrain = getDrillTrainState(worker, now);
   if (drillTrain) trains.push(drillTrain);
 
   const result = engine.update(worker, trains, now);
 
   if (armed) {
-    orchestrator.process(result);
-    // Audit real WARN/CRITICAL escalations (never pollute audit log with drills)
+    if (store.voiceOn) {
+      orchestrator.process(result);
+    } else {
+      siren.set(LEVEL.NONE);
+    }
     const p = result.primary;
     if (p && !p.isSimulation && p.level >= LEVEL.WARN) {
       const sig = `${p.key}:${p.level}`;
@@ -585,7 +642,7 @@ function loop() {
     }
   }
 
-  render(worker, result);
+  render(worker, result, trains);
 }
 
 const fmtClock = s => {
@@ -593,183 +650,226 @@ const fmtClock = s => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-const LINE_LABEL = { UP: 'UP · BZA', DN: 'DOWN · GDR', BOTH: 'BOTH' };
 const LEVEL_TE = {
-  0: 'సురక్షితం · రైలు సమీపంలో లేదు',
-  1: 'సురక్షితం · రైలు సమీపంలో లేదు',
-  2: 'సిద్ధంగా ఉండండి · రైలు వస్తోంది',
+  0: 'సురక్షితం',
+  1: 'సురక్షితం',
+  2: 'సిద్ధంగా ఉండండి',
   3: 'జాగ్రత్త · సామాను తొలగించండి',
-  4: 'ప్రమాదం · వెంటనే ట్రాక్ ఖాళీ చేయండి!',
-};
-const LEVEL_EN = {
-  0: 'TRACK CLEAR',
-  1: 'TRACK CLEAR',
-  2: 'PREPARE · TRAIN APPROACHING',
-  3: 'WARNING · CLEAR TOOLS',
-  4: 'DANGER · CLEAR TRACK NOW',
+  4: 'ప్రమాదం · ఖాళీ చేయండి!',
 };
 
-function render(worker, r) {
-  // 1. GPS / Beat badge
-  const gpsBadge = document.getElementById('gps-badge');
-  const gpsBadgeText = document.getElementById('gps-badge-text');
-  const gpsText = document.getElementById('gps-text');
+const DIAL_CIRCUMFERENCE = 276.46; // 2 * pi * 44
 
-  if (worker) {
-    if (gpsBadgeText) gpsBadgeText.textContent = worker.badge;
-    if (gpsBadge) {
-      gpsBadge.className = `badge-status ${worker.source === 'GPS' ? 'badge-ok' : worker.source === 'MANUAL' ? 'badge-manual' : 'badge-warn'}`;
-    }
-    if (gpsText) gpsText.textContent = worker.label;
-  } else {
-    if (gpsBadgeText) gpsBadgeText.textContent = 'SELECT BEAT';
-    if (gpsBadge) gpsBadge.className = 'badge-status badge-bad';
-    if (gpsText) gpsText.textContent = 'Select Beat';
-  }
-
-  // 2. Feed badge
-  const fs = live.feedStatus();
-  const feedBadge = document.getElementById('feed-badge');
-  const feedBadgeText = document.getElementById('feed-badge-text');
-  if (drillState) {
-    if (feedBadgeText) feedBadgeText.textContent = 'SIMULATION DRILL';
-    if (feedBadge) feedBadge.className = 'badge-status badge-sim';
-  } else {
-    if (feedBadgeText) {
-      feedBadgeText.textContent = fs.state === 'LIVE'
-        ? 'LIVE NTES FEED'
-        : fs.state === 'STALE'
-        ? `FEED ${Math.round(fs.ageS / 60)}m OLD`
-        : 'SCHEDULE MODE';
-    }
-    if (feedBadge) {
-      feedBadge.className = `badge-status ${fs.state === 'LIVE' ? 'badge-ok' : fs.state === 'STALE' ? 'badge-warn' : 'badge-neutral'}`;
-    }
-  }
-
-  // 3. Status Band
+function render(worker, r, allCorridorTrains) {
   const p = r.primary;
   const lvl = p ? p.level : LEVEL.NONE;
   document.body.dataset.level = r.noLocation ? 'NOLOC' : LEVEL_NAME[lvl];
 
-  const statusEn = document.getElementById('status-en');
-  const statusTe = document.getElementById('status-te');
-  if (statusEn) statusEn.textContent = r.noLocation ? 'SELECT WORK BEAT' : LEVEL_EN[lvl];
-  if (statusTe) statusTe.textContent = r.noLocation ? 'మీ బీట్ ఎంచుకోండి' : LEVEL_TE[lvl];
+  const fs = live.feedStatus();
+  const isOnline = navigator.onLine !== false;
 
-  // 4. Primary Threat Card & Acknowledge Button
-  const threatCard = document.getElementById('threat');
-  const ackBtn = document.getElementById('ack');
-  if (threatCard) threatCard.hidden = !p;
-  if (ackBtn) ackBtn.hidden = !p || lvl < LEVEL.WARN || !armed;
+  // 1. Feed Well inside Dial Card
+  const feedText = document.getElementById('feed-badge-text');
+  const feedDot = document.getElementById('feed-dot');
+  if (drillState) {
+    if (feedText) feedText.textContent = 'DRILL';
+    if (feedDot) feedDot.className = 'pilot-dot dot-live';
+  } else if (!isOnline || !live.preferLive) {
+    if (feedText) feedText.textContent = 'OFFLINE SCH';
+    if (feedDot) feedDot.className = 'pilot-dot';
+  } else if (fs.state === 'LIVE') {
+    if (feedText) feedText.textContent = `LIVE · ${fs.liveCount}`;
+    if (feedDot) feedDot.className = 'pilot-dot dot-live';
+  } else if (fs.state === 'STALE') {
+    if (feedText) feedText.textContent = `LIVE ${Math.round(fs.ageS / 60)}M`;
+    if (feedDot) feedDot.className = 'pilot-dot dot-live';
+  } else {
+    if (feedText) feedText.textContent = 'FALLBACK';
+    if (feedDot) feedDot.className = 'pilot-dot';
+  }
+
+  // 2. Brushed-Aluminum 240px Proximity Dial
+  const dialNum = document.getElementById('dial-num');
+  const dialCap = document.getElementById('dial-caption');
+  const dialTe = document.getElementById('dial-te');
+  const dialArc = document.getElementById('dial-arc');
+  const dialLed = document.getElementById('dial-led');
+
+  // Nearest relevant movement (either primary threat or closest upcoming ambient train)
+  const closest = p || r.ambient[0] || null;
 
   if (p) {
-    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    set('t-no', p.no);
-    set('t-name', p.name);
-    set('t-line', LINE_LABEL[p.line] || p.line);
-    set('t-dist', p.atSite ? 'AT SITE' : `${Math.max(0, p.dLeadKm).toFixed(1)}`);
-    set('t-eta', p.atSite ? '0:00' : fmtClock(p.etaLowerS));
-    set('t-speed', `${Math.round(p.speedKmh)} km/h`);
-
-    const tPill = document.getElementById('t-pill');
-    if (tPill) tPill.textContent = p.isSimulation ? `DRILL · ${LEVEL_NAME[p.level]}` : LEVEL_NAME[p.level];
-
-    const tSrc = document.getElementById('t-src');
-    if (tSrc) {
-      if (p.isSimulation) {
-        tSrc.textContent = 'SIMULATED';
-        tSrc.dataset.state = 'sim';
-      } else {
-        tSrc.textContent = p.confirmed
-          ? `LIVE · ${p.delayMin > 0 ? `+${p.delayMin}m late` : 'on time'}`
-          : 'SCHEDULED';
-        tSrc.dataset.state = p.confirmed ? 'ok' : 'warn';
-      }
+    const dist = Math.max(0, p.dLeadKm);
+    const pct = p.atSite ? 1 : Math.max(0.08, Math.min(1, 1 - (dist / 20)));
+    if (dialArc) dialArc.style.strokeDashoffset = String((DIAL_CIRCUMFERENCE * (1 - pct)).toFixed(2));
+    if (dialLed) dialLed.classList.add('lit');
+    if (dialNum) {
+      dialNum.textContent = p.atSite ? 'PASS' : fmtClock(p.etaLowerS);
+      dialNum.classList.toggle('num-word', p.atSite);
     }
-    const extra = r.threats.length - 1;
-    set('t-more', extra > 0 ? `+${extra} more on active line` : '');
+    const delayTxt = p.delayMin > 0 ? ` · +${p.delayMin}M` : '';
+    if (dialCap) dialCap.textContent = `${p.no} ${p.line} · ${dist.toFixed(1)} KM${delayTxt}`;
+    if (dialTe) dialTe.textContent = LEVEL_TE[lvl];
+  } else {
+    // Calm standby state: gentle ambient arc if a train is 20–45 km out, else clean ring
+    const ambientPct = closest && closest.dLeadKm > 0 && closest.dLeadKm < 45
+      ? Math.max(0.06, (1 - closest.dLeadKm / 50) * 0.35)
+      : 0.08;
+    if (dialArc) dialArc.style.strokeDashoffset = String((DIAL_CIRCUMFERENCE * (1 - ambientPct)).toFixed(2));
+    if (dialLed) dialLed.classList.toggle('lit', armed || fs.state === 'LIVE');
+    if (dialNum) {
+      dialNum.textContent = r.noLocation ? 'BEAT' : 'CLEAR';
+      dialNum.classList.add('num-word');
+    }
+    if (dialCap) {
+      dialCap.textContent = worker
+        ? `${worker.label.toUpperCase()} · ${engine.mode}`
+        : 'SELECT CORRIDOR BEAT';
+    }
+    if (dialTe) dialTe.textContent = r.noLocation ? 'బీట్ ఎంచుకోండి' : LEVEL_TE[0];
   }
 
-  // 5. Corridor Radar (with dynamic nearby station markers)
-  renderRadar(worker, [...r.threats, ...r.ambient]);
+  // Acknowledge button strictly only when armed & WARN/CRITICAL
+  const ackBtn = document.getElementById('ack');
+  if (ackBtn) ackBtn.hidden = !p || lvl < LEVEL.WARN || !armed;
 
-  // 6. Corridor Traffic List
+  // 3. Nearest Movement Instrument Card + Knurled Proximity Bar
+  const nWell = document.getElementById('nearest-icon-well');
+  const nTitle = document.getElementById('nearest-title');
+  const nSub = document.getElementById('nearest-sub');
+  const proxFill = document.getElementById('prox-fill');
+  const proxThumb = document.getElementById('prox-thumb');
+  const proxLeft = document.getElementById('prox-left');
+  const proxRight = document.getElementById('prox-right');
+
+  if (closest) {
+    const distKm = Math.max(0, closest.dLeadKm);
+    const delayLabel = closest.isSimulation
+      ? 'SIMULATED DRILL'
+      : closest.confirmed
+      ? (closest.delayMin > 0 ? `+${closest.delayMin}m late · LIVE` : 'On time · LIVE')
+      : 'Offline schedule';
+    if (nTitle) nTitle.textContent = `${closest.no} ${closest.name}`;
+    if (nSub) nSub.textContent = `${closest.line} · ${Math.round(closest.speedKmh)} km/h · ${delayLabel}`;
+    if (nWell) nWell.classList.toggle('well-lit', Boolean(p || distKm <= 25));
+
+    const barPct = closest.atSite ? 100 : Math.max(6, Math.min(100, Math.round((1 - Math.min(distKm, 40) / 40) * 100)));
+    if (proxFill) proxFill.style.width = `${barPct}%`;
+    if (proxThumb) proxThumb.style.left = `${barPct}%`;
+    if (proxLeft) proxLeft.textContent = closest.atSite ? 'At worksite now' : `${distKm.toFixed(1)} km away`;
+    if (proxRight) proxRight.textContent = closest.atSite ? '0:00' : fmtClock(closest.etaLowerS);
+  } else {
+    if (nTitle) nTitle.textContent = 'No Approaching Train';
+    if (nSub) nSub.textContent = fs.state === 'LIVE' ? 'Live RailRadar corridor clear' : 'Offline timetable clear';
+    if (nWell) nWell.classList.remove('well-lit');
+    if (proxFill) proxFill.style.width = '6%';
+    if (proxThumb) proxThumb.style.left = '6%';
+    if (proxLeft) proxLeft.textContent = '40 km horizon';
+    if (proxRight) proxRight.textContent = 'CLEAR';
+  }
+
+  // 4. Position Card & Lookout Guard Pill
+  const gpsText = document.getElementById('gps-text');
+  const posPill = document.getElementById('pos-mode-pill');
+  if (gpsText) gpsText.textContent = worker ? worker.label : 'Select Beat';
+  if (posPill) {
+    posPill.textContent = worker?.source === 'GPS' ? 'GPS LOCK' : gpsWatching ? 'SEARCHING' : 'BEAT LOCK';
+  }
+
+  const guardText = document.getElementById('guard-pill-text');
+  const guardPill = document.getElementById('guard-pill');
+  if (guardText) {
+    guardText.textContent = drillState ? 'DRILL' : lvl === LEVEL.CRITICAL ? 'CLEAR NOW' : armed ? 'ARMED' : 'STANDBY';
+  }
+  if (guardPill) {
+    guardPill.classList.toggle('pill-danger', lvl === LEVEL.CRITICAL);
+  }
+
+  // 5. Debossed Corridor Meter Screen & 7-Bar Traffic Sparkline
+  const allShown = [...r.threats, ...r.ambient];
+  const meterEyebrow = document.getElementById('meter-eyebrow');
+  const meterReading = document.getElementById('meter-reading');
+  const meterDelta = document.getElementById('meter-delta');
+  const meterAge = document.getElementById('meter-sync-age');
+
+  const trackedTotal = allCorridorTrains.length;
+  const liveCount = allCorridorTrains.filter(t => t.source === 'LIVE').length;
+  const delayedCount = allCorridorTrains.filter(t => (t.delayMin || 0) >= 5).length;
+
+  if (meterEyebrow) {
+    meterEyebrow.textContent = fs.state === 'LIVE' ? 'LIVE CORRIDOR' : !live.preferLive || !isOnline ? 'OFFLINE SCHEDULE' : 'CORRIDOR FEED';
+  }
+  if (meterReading) {
+    meterReading.textContent = `${trackedTotal} train${trackedTotal === 1 ? '' : 's'}`;
+  }
+  if (meterDelta) {
+    if (liveCount > 0) {
+      meterDelta.textContent = delayedCount > 0
+        ? `OGL · SKM · NLR · ${delayedCount} delayed live`
+        : 'OGL · SKM · NLR · running live';
+    } else {
+      meterDelta.textContent = 'Embedded 53-train BZA–GDR fallback';
+    }
+  }
+  if (meterAge) {
+    meterAge.textContent = fs.state === 'LIVE'
+      ? `${Math.max(0, Math.round(fs.ageS))}s ago`
+      : 'LOCAL';
+  }
+
+  renderTrafficSparkline(allShown);
+
+  // 6. Corridor Traffic Rows inside Debossed Screen
   const ambientList = document.getElementById('ambient');
   if (ambientList) {
-    const allItems = [...r.threats, ...r.ambient].slice(0, 12);
-    if (allItems.length > 0) {
-      ambientList.innerHTML = allItems.map(a => `
-        <li data-active="${a.active}" data-line="${a.line}" data-level="${LEVEL_NAME[a.level]}" data-sim="${Boolean(a.isSimulation)}">
-          <span class="amb-no">${a.no}</span>
-          <span class="amb-name">${escapeHtml(a.name)}</span>
-          <span class="amb-src">${a.isSimulation ? 'DRILL' : a.confirmed ? 'LIVE' : 'SCHED'}</span>
-          <span class="amb-dir">${a.line}</span>
-          <span class="amb-dist">${a.dLeadKm > 0 ? `${a.dLeadKm.toFixed(1)} km` : a.confirmed ? 'Passing' : 'Due'}</span>
-          <span class="amb-eta">${a.dLeadKm > 0 ? fmtClock(a.etaLowerS) : '—'}</span>
-        </li>`).join('');
+    const rows = allShown.slice(0, 12);
+    if (rows.length > 0) {
+      ambientList.innerHTML = rows.map(a => {
+        const delayTag = a.isSimulation
+          ? '<span class="row-tag tag-live">DRILL</span>'
+          : a.confirmed
+          ? `<span class="row-tag tag-live">${a.delayMin > 0 ? `+${a.delayMin}m` : 'LIVE'}</span>`
+          : '<span class="row-tag">SCH</span>';
+        const distTxt = a.dLeadKm > 0 ? `${a.dLeadKm.toFixed(1)} km` : a.confirmed ? 'Passing' : 'Due';
+        const etaTxt = a.dLeadKm > 0 ? fmtClock(a.etaLowerS) : '—';
+        return `
+          <li class="corridor-row" data-level="${LEVEL_NAME[a.level]}" data-active="${a.active}">
+            <span class="row-no mono">${escapeHtml(a.no)}</span>
+            <span class="row-name">${escapeHtml(a.name)}</span>
+            ${delayTag}
+            <span class="row-dir mono">${a.line}</span>
+            <span class="row-dist mono">${distTxt}</span>
+            <span class="row-eta mono">${etaTxt}</span>
+          </li>`;
+      }).join('');
     } else {
-      ambientList.innerHTML = '<li class="empty">No scheduled or live trains within 30 minutes for this beat. Tap Safety Drill above to preview alert behavior.</li>';
+      ambientList.innerHTML = '<li class="empty">No trains within range right now. Tap Run Drill to preview alerts.</li>';
     }
-  }
-
-  // Session button critical state
-  const smbBtn = document.getElementById('session-mega-btn');
-  if (smbBtn && armed) {
-    smbBtn.classList.toggle('session-danger', lvl === LEVEL.CRITICAL);
-    const dot = document.getElementById('smb-dot');
-    if (dot) dot.className = `smb-status-dot ${lvl === LEVEL.CRITICAL ? 'dot-crit' : 'dot-on'}`;
   }
 }
 
-const RADAR_KM = 20;
-function renderRadar(worker, rows) {
-  const trainsLayer = document.getElementById('radar-trains');
-  const stationsLayer = document.getElementById('radar-stations');
-  const workerLabel = document.getElementById('radar-worker-km');
-
-  if (!worker || !Number.isFinite(worker.km)) {
-    if (trainsLayer) trainsLayer.innerHTML = '';
-    if (stationsLayer) stationsLayer.innerHTML = '';
-    if (workerLabel) workerLabel.textContent = 'YOU';
-    return;
+/** Update the 7-bar etched SVG sparkline (15-min arrival buckets across next 105 min). */
+function renderTrafficSparkline(rows) {
+  const svg = document.getElementById('corridor-sparkline');
+  if (!svg) return;
+  const buckets = [0, 0, 0, 0, 0, 0, 0];
+  for (const r of rows) {
+    if (!Number.isFinite(r.etaLowerS) || r.etaLowerS < 0) continue;
+    const mins = r.etaLowerS / 60;
+    const idx = Math.min(6, Math.floor(mins / 15));
+    buckets[idx] += 1;
   }
-
-  const x = km => 300 + ((km - worker.km) / RADAR_KM) * 276;
-  if (workerLabel) workerLabel.textContent = `YOU · km ${worker.km.toFixed(1)}`;
-
-  // Dynamic nearby stations inside ±20 km corridor window
-  if (stationsLayer) {
-    stationsLayer.innerHTML = STATIONS
-      .filter(s => Math.abs(s.km - worker.km) <= RADAR_KM && Math.abs(s.km - worker.km) >= 1.2)
-      .map(s => {
-        const sx = Math.max(24, Math.min(576, x(s.km)));
-        return `<g class="radar-stn">
-          <line x1="${sx}" y1="30" x2="${sx}" y2="112" stroke="currentColor" stroke-dasharray="2 3" opacity="0.28"/>
-          <text x="${sx}" y="74" text-anchor="middle">${s.code}</text>
-        </g>`;
-      }).join('');
-  }
-
-  if (trainsLayer) {
-    trainsLayer.innerHTML = rows
-      .filter(t => Number.isFinite(t.kmNominal) && Math.abs(t.kmNominal - worker.km) <= RADAR_KM)
-      .map(t => {
-        const y = t.dir === 'UP' ? 42 : 98;
-        const cx = Math.max(20, Math.min(580, x(t.kmNominal)));
-        const lead = Math.max(20, Math.min(580, x(t.kmLead)));
-        const arrow = t.dir === 'UP'
-          ? `M${cx - 8},${y - 7} L${cx + 9},${y} L${cx - 8},${y + 7} Z`
-          : `M${cx + 8},${y - 7} L${cx - 9},${y} L${cx + 8},${y + 7} Z`;
-        const labelY = t.dir === 'UP' ? y - 12 : y + 19;
-        const lvlCls = t.isSimulation ? 'lvl-SIM' : `lvl-${LEVEL_NAME[t.level]}`;
-        return `<g class="rt ${lvlCls}" data-active="${t.active}">
-          <line x1="${Math.min(cx, lead)}" x2="${Math.max(cx, lead)}" y1="${y}" y2="${y}" class="env"/>
-          <path d="${arrow}"/>
-          <text x="${cx}" y="${labelY}" text-anchor="middle">${t.no}</text>
-        </g>`;
-      }).join('');
-  }
+  const maxVal = Math.max(2, ...buckets);
+  const bars = svg.querySelectorAll('rect.spark-bar');
+  // Display oldest/farthest left -> imminent now on right (matching Haven's right-most lit active bar!)
+  const ordered = [...buckets].reverse();
+  bars.forEach((rect, i) => {
+    const val = ordered[i] || 0;
+    const h = Math.max(6, Math.round((val / maxVal) * 34) + (val > 0 ? 4 : 0));
+    rect.setAttribute('height', String(h));
+    rect.setAttribute('y', String(42 - h));
+    rect.classList.toggle('active', i === 6 && val > 0);
+  });
 }
 
 async function renderAlertAuditLog() {
@@ -777,22 +877,23 @@ async function renderAlertAuditLog() {
   if (!list) return;
   const logs = await getAlertLogs(25);
   if (logs.length === 0) {
-    list.innerHTML = '<li class="empty">No warning or critical alerts recorded during armed shifts yet.</li>';
+    list.innerHTML = '<li class="empty">No WARN or CRITICAL shifts recorded yet.</li>';
     return;
   }
   list.innerHTML = logs.map(l => {
     const timeStr = new Date(l.timestamp).toLocaleTimeString('en-IN', {
       timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit',
     });
-    return `<li class="alert-log-row" data-level="${l.level}">
-      <span class="al-lvl">${escapeHtml(l.level)}</span>
-      <span class="al-main"><strong>${escapeHtml(l.trainNo)}</strong> ${escapeHtml(l.trainName || '')} (${escapeHtml(l.line || '')})</span>
-      <span class="al-meta">${l.distanceKm != null ? `${l.distanceKm} km` : ''} · ${timeStr}</span>
+    return `<li class="corridor-row" data-level="${escapeHtml(l.level)}">
+      <span class="row-tag tag-live">${escapeHtml(l.level)}</span>
+      <span class="row-name"><strong>${escapeHtml(l.trainNo)}</strong> ${escapeHtml(l.trainName || '')}</span>
+      <span class="row-dist mono">${l.distanceKm != null ? `${l.distanceKm} km` : ''}</span>
+      <span class="row-eta mono">${timeStr}</span>
     </li>`;
   }).join('');
 }
 
-// ── Tab Navigation (strict hidden + aria-selected + hash sync) ───────────────
+// ── Navigation ───────────────────────────────────────────────────────────────
 function setupNavigation() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => navigateTo(btn.dataset.screen, true));
@@ -818,7 +919,7 @@ function navigateTo(screenId, updateHash = true) {
     history.replaceState(null, '', `#${screenId}`);
   }
 
-  document.getElementById('main-content')?.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0, behavior: 'instant' });
 
   if (screenId === 'defect'  && !window._defectInit)  { initDefectReport(getDefectElements());  window._defectInit  = true; }
   if (screenId === 'diary'   && !window._diaryInit)   { initGangDiary(getDiaryElements());      window._diaryInit   = true; }
@@ -826,7 +927,7 @@ function navigateTo(screenId, updateHash = true) {
   if (screenId === 'manual'  && !window._manualInit)  { initPWManual(getManualElements());      window._manualInit  = true; }
 }
 
-// ── Emergency Line Protection Sheet (SOS) ────────────────────────────────────
+// ── SOS Modal ────────────────────────────────────────────────────────────────
 function setupSOSModal() {
   const overlay = document.getElementById('sos-overlay');
   document.getElementById('btn-sos')?.addEventListener('click', openSOS);
@@ -840,9 +941,9 @@ function setupSOSModal() {
     const msg = `RAILWAY EMERGENCY — RailRaksha\nLocation: ${loc}\nGang: ${gang} | Mate: ${mate}\nLine: ${engine.mode}\nTime: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`;
     try {
       await navigator.clipboard.writeText(msg);
-      showToast('Emergency location message copied', 'ok');
+      showToast('Emergency SMS text copied', 'ok');
     } catch {
-      showToast('Location: ' + loc, 'info');
+      showToast(loc, 'info');
     }
   });
 }
@@ -865,7 +966,6 @@ function openSOS() {
       pwiRow.hidden = true;
     }
   }
-
   overlay.hidden = false;
   document.getElementById('btn-close-sos')?.focus();
 }
@@ -875,7 +975,7 @@ function closeSOS() {
   if (overlay) overlay.hidden = true;
 }
 
-// ── Settings Modal ────────────────────────────────────────────────────────────
+// ── Settings Modal ───────────────────────────────────────────────────────────
 const SETTING_FIELDS = [
   'mate_name', 'gang_no', 'gang_strength', 'section', 'pwi_phone',
   'work_station_a', 'work_station_b',
@@ -899,15 +999,14 @@ function loadSettings() {
     const el = document.getElementById(`setting-${key}`);
     if (el) el.value = getConfig(key) || '';
   });
-
   document.querySelectorAll('.btn-toggle-visibility').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.onclick = () => {
       const input = document.getElementById(btn.dataset.target);
       if (input) {
         input.type = input.type === 'password' ? 'text' : 'password';
         btn.textContent = input.type === 'password' ? 'Show' : 'Hide';
       }
-    });
+    };
   });
 }
 
@@ -929,7 +1028,7 @@ function setupSettings() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('Offline field data exported (JSON)', 'ok');
+    showToast('Offline backup exported (JSON)', 'ok');
   });
 }
 
@@ -942,16 +1041,16 @@ async function openSettings() {
 
   const statusEl = document.getElementById('edge-health-status');
   if (statusEl) {
-    statusEl.textContent = 'Checking Cloudflare edge endpoints...';
+    statusEl.textContent = 'Checking Cloudflare Edge...';
     const health = await checkServerHealth();
     if (health.offline) {
-      statusEl.textContent = 'Offline — local PWA, timetable, diary, defects & IRPWM active';
+      statusEl.textContent = 'Offline — local schedule, defects, diary & IRPWM ready';
     } else if (health.reachable && health.services) {
-      const aiTxt = health.services.ai?.configured ? `AI Proxy: Ready (${health.services.ai.provider})` : 'AI Proxy: Server key pending (Offline fallback active)';
-      const liveTxt = health.services.liveTrains?.configured ? 'Live Feed: RailRadar v1' : 'Live Feed: Schedule Mode';
-      statusEl.textContent = `Cloudflare Edge Connected · ${aiTxt} · ${liveTxt} · Weather: Open-Meteo`;
+      const aiTxt = health.services.ai?.configured ? `AI: ${health.services.ai.model}` : 'AI: Offline fallback';
+      const liveTxt = health.services.liveTrains?.configured ? 'Live Feed: RailRadar v1' : 'Live Feed: Schedule';
+      statusEl.textContent = `Cloudflare Edge · ${aiTxt} · ${liveTxt}`;
     } else {
-      statusEl.textContent = 'Local preview mode — Cloudflare Worker APIs activate on railraksha.tech';
+      statusEl.textContent = 'Local preview mode';
     }
   }
 }
@@ -968,28 +1067,14 @@ function saveSettings() {
   });
   applyTheme(getConfig('theme'));
   syncEngineConfig();
+  window._syncRockers?.();
   closeSettings();
-  updateHeaderName();
   window.dispatchEvent(new CustomEvent('railraksha:settings-updated'));
   loop();
   showToast('Settings saved', 'ok');
 }
 
-function updateHeaderName() {
-  const name = localStorage.getItem('mate_name') || '';
-  const gang = localStorage.getItem('gang_no') || '';
-  const stA = getConfig('work_station_a') || 'SKM';
-  const stB = getConfig('work_station_b') || 'UPD';
-  const el = document.getElementById('header-subtitle');
-  if (!el) return;
-  if (name || gang) {
-    el.textContent = [name, gang ? `Gang ${gang}` : '', `${stA}–${stB}`].filter(Boolean).join(' · ');
-  } else {
-    el.textContent = `${stA}–${stB} · Vijayawada Div.`;
-  }
-}
-
-// ── Toast System ──────────────────────────────────────────────────────────────
+// ── Toast System ─────────────────────────────────────────────────────────────
 let toastTimer = null;
 function setupToastSystem() {
   window.addEventListener('showToast', (e) => showToast(e.detail.msg, e.detail.type));
@@ -998,11 +1083,12 @@ function setupToastSystem() {
 function showToast(msg, type = 'info') {
   const toast = document.getElementById('toast');
   if (!toast) return;
+  const color = type === 'error' ? '#C81E1E' : type === 'warn' || type === 'ok' ? '#E5481F' : 'currentColor';
   const icons = {
-    ok: Icons.check(16, '#22C55E'),
-    warn: Icons.alert(16, '#F59E0B'),
-    error: Icons.alertCircle(16, '#EF4444'),
-    info: Icons.info(16, '#94A3B8'),
+    ok: Icons.check(15, color),
+    warn: Icons.alert(15, color),
+    error: Icons.alertCircle(15, color),
+    info: Icons.info(15, color),
   };
   const iconEl = toast.querySelector('.toast-icon');
   const msgEl = toast.querySelector('.toast-msg');
@@ -1019,7 +1105,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ── Element Maps ──────────────────────────────────────────────────────────────
+// ── Sub-module Element Maps ──────────────────────────────────────────────────
 function getDefectElements() {
   return {
     captureZone: document.getElementById('capture-zone'),

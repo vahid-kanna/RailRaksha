@@ -218,3 +218,42 @@ test('Offline libraries & 47-train corridor timetable integrity', () => {
     }
   }
 });
+
+
+test('v8.0 live-data-first corridor state & clock-skew safety', async () => {
+  const { buildLiveCorridorState } = await import('../js/live-trains.js');
+  const { inferDirectionFromEndpoints, resolveAIProvider } = await import('../worker/handlers.js');
+
+  assert.equal(inferDirectionFromEndpoints('MAS', 'BZA'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('VSKP', 'TPTY'), 'DN');
+  assert.equal(inferDirectionFromEndpoints('NDLS', 'MAS'), 'DN');
+  assert.equal(inferDirectionFromEndpoints('ALLP', 'DHN'), 'UP');
+
+  // Anchor to RailRadar server timestamp regardless of client clock drift
+  const serverNow = Date.parse('2026-11-26T01:00:00+05:30');
+  const st = buildLiveCorridorState({
+    no: '17210',
+    name: 'Seshadri Express',
+    dir: 'DN',
+    isLive: true,
+    delayMin: 18,
+    boards: {
+      OGL: { type: 'upcoming', expectedArrival: '2026-11-26T01:06:00+05:30', delayMinutes: 18 },
+    },
+    detail: null,
+  }, serverNow);
+
+  assert.ok(st, 'Expected live corridor state');
+  assert.equal(st.source, 'LIVE');
+  assert.equal(st.confirmed, true);
+  assert.equal(st.delayMin, 18);
+  assert.equal(st.dir, 'DN');
+  // 6 minutes upstream (north) of OGL (km 315) at ~85 km/h -> ~323.5 km
+  assert.ok(st.kmNominal > 316 && st.kmNominal < 330, `Unexpected kmNominal=${st.kmNominal}`);
+
+  // Verify Gemini 3 model failover chain
+  const ai = resolveAIProvider({ GEMINI_API_KEY: 'test-key' });
+  assert.equal(ai.name, 'gemini');
+  assert.equal(ai.defaultModel, 'gemini-3-flash-preview');
+  assert.ok(ai.fallbackModels.includes('gemini-3.5-flash'));
+});
