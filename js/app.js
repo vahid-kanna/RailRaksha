@@ -1,5 +1,5 @@
 /**
- * RailRaksha — Main Application Controller v8.0 (app.js)
+ * RailRaksha — Main Application Controller v8.1 (app.js)
  *
  * Live-Data-First Corridor Safety Instrument:
  *   - Primary Live Feed: Cloudflare Worker `/api/corridor-live` (OGL, SKM, NLR RailRadar v1 boards)
@@ -21,13 +21,24 @@ import { initGangDiary }    from './gang-diary.js';
 import { initWeatherAlert } from './weather-alert.js';
 import { initPWManual }     from './pw-manual.js';
 import {
-  openDB, setSetting, logAlert, getAlertLogs, clearAlertLogs, exportAllData, getISTDateISO,
+  openDB, getSetting, setSetting, logAlert, getAlertLogs, clearAlertLogs, exportAllData, getISTDateISO,
 } from './db.js';
 import { applyDefaultsOnce, getConfig, getConfigNum } from './config.js';
 import { checkServerHealth } from './ai-engine.js';
 import { Icons } from './icons.js';
 
 window.getConfig = getConfig;
+
+function pulseHaptic(ms = 25) {
+  if (!navigator.userActivation || navigator.userActivation.isActive) {
+    navigator.vibrate?.(ms);
+  }
+}
+
+function getRailRadarHeaders() {
+  const key = (getConfig('railradar_key') || '').trim();
+  return key ? { 'X-RailRadar-Key': key } : {};
+}
 
 // ── Preferences Store ────────────────────────────────────────────────────────
 const store = {
@@ -45,7 +56,7 @@ const store = {
 // ── Live Corridor Fetcher (Cloudflare Worker `/api/corridor-live` FIRST) ─────
 async function fetchCorridorLive(signal, forceFresh = false) {
   const url = forceFresh ? '/api/corridor-live?fresh=1' : '/api/corridor-live';
-  const r = await fetch(url, { signal, cache: 'no-store' });
+  const r = await fetch(url, { signal, cache: 'no-store', headers: getRailRadarHeaders() });
   if (!r.ok) throw new Error(`Corridor feed HTTP ${r.status}`);
   return await r.json();
 }
@@ -53,7 +64,7 @@ async function fetchCorridorLive(signal, forceFresh = false) {
 async function fetchLive(trainNo, runDateISO, signal) {
   if (!/^\d{4,5}$/.test(String(trainNo))) throw new Error('Non-NTES freight slot');
   const qs = `train=${encodeURIComponent(trainNo)}&date=${encodeURIComponent(runDateISO)}`;
-  const r = await fetch(`/api/live-status?${qs}`, { signal, cache: 'no-store' });
+  const r = await fetch(`/api/live-status?${qs}`, { signal, cache: 'no-store', headers: getRailRadarHeaders() });
   if (r.ok) return await r.json();
   throw new Error('Live status unavailable');
 }
@@ -216,6 +227,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   applyTheme(store.theme);
   syncEngineConfig();
   await openDB();
+  const previousShiftActive = await getSetting('work_session_active', false);
+  if (previousShiftActive) {
+    await setSetting('work_session_active', false);
+    await setSetting('session_start_time', null);
+  }
 
   if (!gps.manual) {
     const defaultCode = STATION_BY_CODE[getConfig('work_station_a')] ? getConfig('work_station_a') : 'SKM';
@@ -228,6 +244,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupSettings();
   setupSOSModal();
   setupToastSystem();
+  if (previousShiftActive) {
+    showToast('Previous shift ended on reload — tap Arm Shift to monitor', 'info');
+  }
   bindTrackSelector();
   bindBeatPicker();
   bindHardwareRockers();
@@ -253,8 +272,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.addEventListener('online', () => {
-    showToast('Online — syncing live corridor trains', 'ok');
-    pollCorridorNow(false);
+    showToast('Online — live corridor feed available', 'ok');
+    if (armed || !live.lastSuccessAt) pollCorridorNow(false);
   });
   window.addEventListener('offline', () => {
     showToast('Offline — switched to local corridor timetable', 'warn');
@@ -275,7 +294,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // 1 Hz instrument update loop
   setInterval(loop, 1000);
 
-  // Live-Data-First Corridor Poll (immediate + every 45s while online)
+  // Live-Data-First Corridor Poll (once on boot, then every 5 min only while shift is armed)
   const pollCorridorNow = async (forceFresh = false) => {
     if (navigator.onLine === false || !live.preferLive) return;
     const w = gps.getPosition();
@@ -284,12 +303,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   };
   window._pollCorridorNow = pollCorridorNow;
   pollCorridorNow(false);
-  setInterval(() => pollCorridorNow(false), 45000);
-
-  // Quick ambient temp for top bar chip
-  fetchQuickWeatherChip();
+  setInterval(() => {
+    if (armed) pollCorridorNow(false);
+  }, 300000);
 
   loop();
+  // Quick ambient temp for top bar chip (after loop sets _currentWorkerPos)
+  fetchQuickWeatherChip();
   renderAlertAuditLog();
 
   if ('serviceWorker' in navigator) {
@@ -340,7 +360,7 @@ function bindHardwareRockers() {
   liveBtn?.addEventListener('click', () => {
     store.preferLive = !store.preferLive;
     live.preferLive = store.preferLive;
-    navigator.vibrate?.(25);
+    pulseHaptic(25);
     syncRockers();
     if (live.preferLive) {
       window._pollCorridorNow?.(false);
@@ -357,14 +377,14 @@ function bindHardwareRockers() {
       siren.set(LEVEL.NONE);
       try { window.speechSynthesis?.cancel(); } catch {}
     }
-    navigator.vibrate?.(25);
+    pulseHaptic(25);
     syncRockers();
     showToast(store.voiceOn ? 'Voice & siren audio armed' : 'Audio muted (visual alerts active)', 'info');
   });
 
   gpsBtn?.addEventListener('click', () => {
     gpsWatching = !gpsWatching;
-    navigator.vibrate?.(25);
+    pulseHaptic(25);
     if (gpsWatching) {
       gps.start();
       showToast('Live GPS corridor tracking enabled', 'info');
@@ -393,7 +413,7 @@ function setupDrillButton() {
 function setupAcknowledgeButton() {
   document.getElementById('ack')?.addEventListener('click', () => {
     orchestrator.acknowledge();
-    navigator.vibrate?.(60);
+    pulseHaptic(60);
     loop();
     showToast('Siren silenced briefly (critical voice stays armed)', 'info');
   });
@@ -410,7 +430,13 @@ function setupRefreshTrainsButton() {
       showToast('Syncing live OGL · SKM · NLR boards...', 'info');
       await window._pollCorridorNow?.(true);
       const fs = live.feedStatus();
-      showToast(fs.state === 'LIVE' ? `Live sync complete — ${fs.liveCount} trains tracked` : 'Live sync delayed — fallback active', fs.state === 'LIVE' ? 'ok' : 'warn');
+      if (fs.state === 'LIVE') {
+        showToast(`Live sync complete — ${fs.liveCount} trains tracked`, 'ok');
+      } else if (fs.state === 'QUOTA') {
+        showToast('RailRadar API quota reached — schedule fallback active', 'warn');
+      } else {
+        showToast('Live sync delayed — fallback active', 'warn');
+      }
     }
     setTimeout(() => btn?.classList.remove('pressed'), 280);
   });
@@ -531,7 +557,7 @@ function bindTrackSelector() {
       engine.setMode(btn.dataset.track);
       engine.mem.clear();
       store.mode = btn.dataset.track;
-      navigator.vibrate?.(25);
+      pulseHaptic(25);
       renderTrackSelector();
       loop();
     });
@@ -549,7 +575,7 @@ function renderTrackSelector() {
 }
 
 // Order core SKM–UPD beat stations first for instant thumb reach, followed by full corridor
-const BEAT_ORDER = ['SKM', 'UPD', 'INGR', 'TGU', 'OGL', 'KVZ', 'NLR', 'GDR', 'CLX', 'TEL', 'BZA', 'SRZ', 'BTTR', 'VKT'];
+const BEAT_ORDER = ['SKM', 'UPD', 'INGR', 'TGU', 'OGL', 'KVZ', 'NLR', 'GDR', 'ANB', 'CL', 'BPP', 'TEL', 'BZA', 'BVRT'];
 
 function bindBeatPicker() {
   const grid = document.getElementById('beat-grid');
@@ -566,7 +592,7 @@ function bindBeatPicker() {
       if (!b) return;
       gps.setManualBeat(b.dataset.code);
       engine.mem.clear();
-      navigator.vibrate?.(25);
+      pulseHaptic(25);
       highlightSelectedBeat();
       loop();
       showToast(`Beat set to ${b.dataset.code} · km ${STATION_BY_CODE[b.dataset.code]?.km}`, 'ok');
@@ -683,6 +709,9 @@ function render(worker, r, allCorridorTrains) {
   } else if (fs.state === 'STALE') {
     if (feedText) feedText.textContent = `LIVE ${Math.round(fs.ageS / 60)}M`;
     if (feedDot) feedDot.className = 'pilot-dot dot-live';
+  } else if (fs.state === 'QUOTA') {
+    if (feedText) feedText.textContent = 'QUOTA · SCH';
+    if (feedDot) feedDot.className = 'pilot-dot';
   } else {
     if (feedText) feedText.textContent = 'FALLBACK';
     if (feedDot) feedDot.className = 'pilot-dot';
@@ -797,7 +826,13 @@ function render(worker, r, allCorridorTrains) {
   const delayedCount = allCorridorTrains.filter(t => (t.delayMin || 0) >= 5).length;
 
   if (meterEyebrow) {
-    meterEyebrow.textContent = fs.state === 'LIVE' ? 'LIVE CORRIDOR' : !live.preferLive || !isOnline ? 'OFFLINE SCHEDULE' : 'CORRIDOR FEED';
+    meterEyebrow.textContent = fs.state === 'LIVE'
+      ? 'LIVE CORRIDOR'
+      : fs.state === 'QUOTA'
+      ? 'QUOTA · SCHEDULE'
+      : !live.preferLive || !isOnline
+      ? 'OFFLINE SCHEDULE'
+      : 'CORRIDOR FEED';
   }
   if (meterReading) {
     meterReading.textContent = `${trackedTotal} train${trackedTotal === 1 ? '' : 's'}`;
@@ -807,6 +842,8 @@ function render(worker, r, allCorridorTrains) {
       meterDelta.textContent = delayedCount > 0
         ? `OGL · SKM · NLR · ${delayedCount} delayed live`
         : 'OGL · SKM · NLR · running live';
+    } else if (fs.state === 'QUOTA') {
+      meterDelta.textContent = 'RailRadar quota reached — using 53-train schedule';
     } else {
       meterDelta.textContent = 'Embedded 53-train BZA–GDR fallback';
     }
@@ -814,6 +851,8 @@ function render(worker, r, allCorridorTrains) {
   if (meterAge) {
     meterAge.textContent = fs.state === 'LIVE'
       ? `${Math.max(0, Math.round(fs.ageS))}s ago`
+      : fs.state === 'QUOTA'
+      ? 'QUOTA'
       : 'LOCAL';
   }
 

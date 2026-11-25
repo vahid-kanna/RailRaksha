@@ -1,5 +1,5 @@
 /**
- * RailRaksha — Central Configuration v8.0 (config.js)
+ * RailRaksha — Central Configuration v8.1 (config.js)
  *
  * Security invariant: Zero secret API keys in client-side code.
  * Live trains (/api/corridor-live, /api/live-status) and AI (/api/chat)
@@ -64,8 +64,8 @@ export function getConfigNum(key) {
 export function applyDefaultsOnce() {
   try {
     const version = localStorage.getItem('_config_version');
-    if (version !== '8.0') {
-      // Upgrade legacy dark/daylight themes to new Cool Titanium light default on v8.0 transition
+    if (version !== '8.1') {
+      // Upgrade legacy dark/daylight themes to Cool Titanium light default on v8.0+ transition
       const prevTheme = localStorage.getItem('theme');
       if (!prevTheme || prevTheme === 'dark' || prevTheme === 'daylight') {
         localStorage.setItem('theme', 'light');
@@ -92,7 +92,7 @@ export function applyDefaultsOnce() {
       if (legacyLang && !localStorage.getItem('voice_lang')) {
         localStorage.setItem('voice_lang', legacyLang);
       }
-      localStorage.setItem('_config_version', '8.0');
+      localStorage.setItem('_config_version', '8.1');
     }
 
     for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {

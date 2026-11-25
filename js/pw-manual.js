@@ -157,7 +157,10 @@ export const QUICK_RULES = [
 
 export function initPWManual(els) {
   elements = els;
+  syncCategoryButtons();
   renderQuickRules();
+  const overlay = document.getElementById('analyzing-overlay');
+  if (overlay && !overlay.dataset.active) showAnalyzingOverlay(false);
 
   elements.btnVoiceSearch?.addEventListener('click', startVoiceSearch);
   elements.searchInput?.addEventListener('input', () => renderQuickRules(elements.searchInput.value.trim()));
@@ -168,11 +171,24 @@ export function initPWManual(els) {
   elements.manualCategoryBar?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-cat]');
     if (!btn) return;
-    activeCategory = btn.dataset.cat;
-    elements.manualCategoryBar.querySelectorAll('[data-cat]').forEach(b => {
-      b.classList.toggle('active', b.dataset.cat === activeCategory);
-    });
+    activeCategory = (btn.dataset.cat || 'ALL').toUpperCase();
+    syncCategoryButtons();
     renderQuickRules(elements.searchInput?.value?.trim() || '');
+  });
+}
+
+function setHidden(el, hide) {
+  if (!el) return;
+  const hidden = Boolean(hide);
+  el.hidden = hidden;
+  el.classList.toggle('hidden', hidden);
+}
+
+function syncCategoryButtons() {
+  elements.manualCategoryBar?.querySelectorAll('[data-cat]').forEach(b => {
+    const active = (b.dataset.cat || '').toUpperCase() === activeCategory;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
   });
 }
 
@@ -181,7 +197,7 @@ function renderQuickRules(filterQuery = '') {
   const q = filterQuery.toLowerCase();
 
   const filtered = QUICK_RULES.filter(r => {
-    if (activeCategory !== 'ALL' && r.group !== activeCategory) return false;
+    if (activeCategory !== 'ALL' && String(r.group || '').toUpperCase() !== activeCategory) return false;
     if (!q) return true;
     const hay = `${r.title} ${r.category} ${r.preview} ${r.fullText} ${r.irpwm}`.toLowerCase();
     return q.split(/\s+/).every(tok => hay.includes(tok));
@@ -205,14 +221,19 @@ function renderQuickRules(filterQuery = '') {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'rule-card';
-    const tagClass = { emergency: 'rc-tag-emergency', safety: 'rc-tag-safety', gauge: 'rc-tag-gauge', protection: 'rc-tag-safety' }[rule.tag] || '';
+    const tagClass = {
+      emergency: 'rc-tag-emergency',
+      safety: 'rc-tag-safety',
+      gauge: 'rc-tag-gauge',
+      protection: 'rc-tag-safety',
+    }[rule.tag] || 'rc-tag-safety';
     card.innerHTML = `
       <div class="rc-top">
-        <span class="rc-category">${rule.category}</span>
-        <span class="rc-tag ${tagClass}">${rule.irpwm}</span>
+        <span class="rc-category">${escapeHtml(rule.category)}</span>
+        <span class="rc-tag ${tagClass}">${escapeHtml(rule.irpwm)}</span>
       </div>
-      <div class="rc-title">${rule.title}</div>
-      <div class="rc-preview">${rule.preview}</div>`;
+      <div class="rc-title">${escapeHtml(rule.title)}</div>
+      <div class="rc-preview">${escapeHtml(rule.preview)}</div>`;
     card.addEventListener('click', () => showRuleAnswer(rule));
     elements.quickRulesList.appendChild(card);
   });
@@ -220,7 +241,7 @@ function renderQuickRules(filterQuery = '') {
 
 function showRuleAnswer(rule) {
   if (!elements.manualAnswerCard) return;
-  elements.manualAnswerCard.hidden = false;
+  setHidden(elements.manualAnswerCard, false);
   if (elements.maaTitle) elements.maaTitle.textContent = rule.title;
   if (elements.maaBody) elements.maaBody.textContent = rule.fullText;
   if (elements.maaSource) elements.maaSource.textContent = `Offline IRPWM Reference · ${rule.irpwm}`;
@@ -272,7 +293,14 @@ function startVoiceSearch() {
     isVoiceSearching = false;
     elements.btnVoiceSearch?.classList.remove('active');
   };
-  rec.start();
+  try {
+    rec.start();
+  } catch {
+    isVoiceSearching = false;
+    elements.btnVoiceSearch?.classList.remove('active');
+    showToast('Voice input unavailable — type your question', 'warn');
+    elements.searchInput?.focus();
+  }
 }
 
 function matchLocalRule(query) {
@@ -321,7 +349,7 @@ Output plain text only (no JSON, no markdown code blocks).`;
   try {
     const res = await callAI({ prompt });
     showAnalyzingOverlay(false);
-    if (elements.manualAnswerCard) elements.manualAnswerCard.hidden = false;
+    setHidden(elements.manualAnswerCard, false);
     const text = typeof res === 'string'
       ? res
       : res?.rawText || res?.answer || Object.entries(res).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n');
@@ -334,6 +362,8 @@ Output plain text only (no JSON, no markdown code blocks).`;
     showToast(err.code === 'ai_not_configured'
       ? 'Cloud AI not configured — browse the 14 offline rules below'
       : 'Query failed: ' + err.message, 'warn');
+  } finally {
+    showAnalyzingOverlay(false);
   }
 }
 
@@ -346,11 +376,13 @@ function escapeHtml(str) {
 function showAnalyzingOverlay(show, title = '', sub = '') {
   const overlay = document.getElementById('analyzing-overlay');
   if (!overlay) return;
-  overlay.hidden = !show;
+  if (show) overlay.dataset.active = '1';
+  else delete overlay.dataset.active;
+  setHidden(overlay, !show);
   overlay.setAttribute('aria-hidden', String(!show));
   if (show) {
-    const t = overlay.querySelector('.analyzing-text');
-    const s = overlay.querySelector('.analyzing-sub');
+    const t = overlay.querySelector('#analyzing-text, .analyzing-text');
+    const s = overlay.querySelector('#analyzing-sub, .analyzing-sub');
     if (t) t.textContent = title;
     if (s) s.textContent = sub;
   }

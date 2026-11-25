@@ -84,8 +84,12 @@ export function initGangDiary(els) {
   syncAttendanceDefaults();
   updateDiaryHeader();
   renderQuickPhrases();
+  syncSpeechLangUI();
+  syncHistoryScopeUI();
   loadSavedEntries();
   updateAttendance();
+  const overlay = document.getElementById('analyzing-overlay');
+  if (overlay && !overlay.dataset.active) showAnalyzingOverlay(false);
 
   elements.btnRecord?.addEventListener('click', toggleRecording);
   elements.btnClearNotes?.addEventListener('click', clearNotes);
@@ -102,24 +106,14 @@ export function initGangDiary(els) {
     const btn = e.target.closest('[data-lang]');
     if (!btn) return;
     speechLang = btn.dataset.lang;
-    elements.speechLangToggle.querySelectorAll('[data-lang]').forEach(b => {
-      b.classList.toggle('active', b.dataset.lang === speechLang);
-      b.setAttribute('aria-pressed', String(b.dataset.lang === speechLang));
-    });
-    if (elements.voiceSub && !isRecording) {
-      elements.voiceSub.textContent = speechLang === 'te-IN'
-        ? 'తెలుగులో మాట్లాడండి — Tap Record to dictate'
-        : 'Speak in English — Tap Record to dictate';
-    }
+    syncSpeechLangUI();
   });
 
   elements.diaryHistoryScope?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-scope]');
     if (!btn) return;
     historyScope = btn.dataset.scope;
-    elements.diaryHistoryScope.querySelectorAll('[data-scope]').forEach(b => {
-      b.classList.toggle('active', b.dataset.scope === historyScope);
-    });
+    syncHistoryScopeUI();
     loadSavedEntries();
   });
 
@@ -127,6 +121,34 @@ export function initGangDiary(els) {
     syncAttendanceDefaults();
     updateDiaryHeader();
     updateAttendance();
+  });
+}
+
+function setHidden(el, hide) {
+  if (!el) return;
+  const hidden = Boolean(hide);
+  el.hidden = hidden;
+  el.classList.toggle('hidden', hidden);
+}
+
+function syncSpeechLangUI() {
+  elements.speechLangToggle?.querySelectorAll('[data-lang]').forEach(b => {
+    const active = b.dataset.lang === speechLang;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+  if (elements.voiceSub && !isRecording) {
+    elements.voiceSub.textContent = speechLang === 'te-IN'
+      ? 'తెలుగులో మాట్లాడండి — Tap Record to dictate'
+      : 'Speak in English — Tap Record to dictate';
+  }
+}
+
+function syncHistoryScopeUI() {
+  elements.diaryHistoryScope?.querySelectorAll('[data-scope]').forEach(b => {
+    const active = b.dataset.scope === historyScope;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
   });
 }
 
@@ -293,7 +315,7 @@ function updateRecordBtn(recording) {
       : (speechLang === 'te-IN' ? 'తెలుగులో మాట్లాడండి — Tap Record to dictate' : 'Speak in English — Tap Record to dictate');
   }
   if (elements.micEmoji) {
-    elements.micEmoji.innerHTML = recording ? Icons.alertCircle(18, '#EF4444') : Icons.mic(18, 'currentColor');
+    elements.micEmoji.innerHTML = recording ? Icons.alertCircle(18, '#C81E1E') : Icons.mic(18, 'currentColor');
   }
 }
 
@@ -301,7 +323,7 @@ function clearNotes() {
   if (isRecording) stopRecording();
   finalTranscript = '';
   if (elements.notesInput) elements.notesInput.value = '';
-  if (elements.diaryEntryCard) elements.diaryEntryCard.hidden = true;
+  setHidden(elements.diaryEntryCard, true);
 }
 
 async function generateDiaryEntry() {
@@ -321,7 +343,8 @@ async function generateDiaryEntry() {
     year: 'numeric',
   });
   const total = getGangStrength();
-  const present = parseInt(elements.attendanceInput?.value || total, 10);
+  const parsedAtt = parseInt(elements.attendanceInput?.value ?? '', 10);
+  const present = Number.isFinite(parsedAtt) ? parsedAtt : total;
   const gangNo = localStorage.getItem('gang_no') || '—';
   const mateName = localStorage.getItem('mate_name') || '—';
   const section = localStorage.getItem('section') || 'SKM–UPD, Vijayawada Div.';
@@ -372,12 +395,14 @@ Return ONLY this JSON object:
     const offlineEntry = buildOfflineDiaryEntry(text, meta);
     displayDiaryEntry(offlineEntry, meta, text);
     showToast('Cloud AI unavailable — structured cleanly offline', 'warn');
+  } finally {
+    showAnalyzingOverlay(false);
   }
 }
 
 function displayDiaryEntry(entry, meta, rawText) {
   if (!elements.diaryEntryCard) return;
-  elements.diaryEntryCard.hidden = false;
+  setHidden(elements.diaryEntryCard, false);
 
   if (elements.entryDate) elements.entryDate.textContent = `${meta.dateStr} · ${entry.structuredBy || 'Formatted'}`;
   if (elements.entryTime) {
@@ -544,11 +569,13 @@ function escapeHtml(str) {
 function showAnalyzingOverlay(show, title = '', sub = '') {
   const overlay = document.getElementById('analyzing-overlay');
   if (!overlay) return;
-  overlay.hidden = !show;
+  if (show) overlay.dataset.active = '1';
+  else delete overlay.dataset.active;
+  setHidden(overlay, !show);
   overlay.setAttribute('aria-hidden', String(!show));
   if (show) {
-    const t = overlay.querySelector('.analyzing-text');
-    const s = overlay.querySelector('.analyzing-sub');
+    const t = overlay.querySelector('#analyzing-text, .analyzing-text');
+    const s = overlay.querySelector('#analyzing-sub, .analyzing-sub');
     if (t) t.textContent = title;
     if (s) s.textContent = sub;
   }

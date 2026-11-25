@@ -82,6 +82,9 @@ export async function loadWeatherData(manual = false) {
   const owmKey = cfg('owm_api_key');
 
   try {
+    if (navigator.onLine === false) {
+      throw new Error('Offline');
+    }
     const payload = owmKey
       ? await fetchOpenWeatherMap(coords, owmKey)
       : await fetchOpenMeteo(coords);
@@ -215,13 +218,13 @@ function renderWeather(data, isCached) {
 function getWeatherIcon(main) {
   const map = {
     Clear: Icons.sun(26, '#E5481F'),
-    Clouds: Icons.cloud(26, '#94A3B8'),
-    Rain: Icons.rain(26, '#38BDF8'),
-    Thunderstorm: Icons.lightning(26, '#E5481F'),
-    Drizzle: Icons.rain(26, '#38BDF8'),
-    Fog: Icons.cloud(26, '#64748B'),
+    Clouds: Icons.cloud(26, '#566375'),
+    Rain: Icons.rain(26, 'currentColor'),
+    Thunderstorm: Icons.lightning(26, '#C81E1E'),
+    Drizzle: Icons.rain(26, '#566375'),
+    Fog: Icons.cloud(26, '#566375'),
   };
-  return map[main] || Icons.sun(26, '#94A3B8');
+  return map[main] || Icons.sun(26, 'currentColor');
 }
 
 function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts, upcomingRainMm, upcomingRainHrs }) {
@@ -261,7 +264,7 @@ function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts
   } else if (rainfall >= 10 || (isMonsoon && humidity >= 92)) {
     risks.push({
       level: 'medium',
-      icon: Icons.rain(18, '#38BDF8'),
+      icon: Icons.rain(18, '#E5481F'),
       title: 'Monsoon / High-Moisture Watch',
       desc: `Rainfall ${rainfall.toFixed(1)} mm/hr, humidity ${humidity}%. Watch catch-water drains and vulnerable formations.`,
       action: 'Inspect side drains, ballast shoulders, and bridge abutments along beat.',

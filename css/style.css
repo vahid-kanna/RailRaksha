@@ -1204,7 +1204,7 @@ body[data-level="WARN"] .dial-te {
 
 .corridor-row {
   display: grid;
-  grid-template-columns: 50px 1fr auto 30px 58px 42px;
+  grid-template-columns: 50px minmax(0, 1fr) auto 30px 58px 42px;
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
@@ -1448,6 +1448,7 @@ body[data-level="WARN"] .dial-te {
 /* Inputs & Selects inside debossed wells */
 .hw-input {
   width: 100%;
+  min-width: 0;
   padding: 11px 13px;
   border-radius: 12px;
   border: 1px solid transparent;
@@ -1531,6 +1532,7 @@ body[data-level="WARN"] .dial-te {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -1819,6 +1821,7 @@ body[data-level="WARN"] .dial-te {
 .defect-type-badge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 3px 9px;
   border-radius: 999px;
   font-size: 10.5px;
@@ -1827,25 +1830,98 @@ body[data-level="WARN"] .dial-te {
   text-transform: uppercase;
   background: var(--well);
   color: var(--ink);
+  max-width: 100%;
+}
+
+.status-pill.st-open {
+  background: rgba(200, 30, 30, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(200, 30, 30, 0.28);
+}
+
+.status-pill.st-reported {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border: 1px solid rgba(229, 72, 31, 0.28);
+}
+
+.status-pill.st-fixed {
+  background: var(--well);
+  box-shadow: var(--debossed);
+  color: var(--muted);
 }
 
 .status-pill.sev-critical,
 .status-pill.sev-high,
 .rc-tag.tag-emergency,
-.defect-type-badge.sev-critical {
-  background: var(--accent-soft);
-  color: var(--accent-deep);
+.rc-tag.rc-tag-emergency {
+  background: rgba(200, 30, 30, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(200, 30, 30, 0.28);
 }
 
-[data-theme="night"] .status-pill.sev-critical,
-[data-theme="night"] .rc-tag.tag-emergency {
+.rc-tag.rc-tag-safety {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border: 1px solid rgba(229, 72, 31, 0.28);
+}
+
+.rc-tag.rc-tag-gauge {
+  background: var(--well);
+  box-shadow: var(--debossed);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+
+.defect-type-badge.sev-critical {
+  background: var(--well);
+  box-shadow: var(--debossed);
+  color: var(--danger);
+  border: 1px solid var(--danger-glow);
+}
+
+.defect-type-badge.sev-high {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border: 1px solid rgba(229, 72, 31, 0.30);
+}
+
+.defect-type-badge.sev-medium {
+  background: var(--well);
+  box-shadow: var(--debossed);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+
+.defect-type-badge.sev-low,
+.defect-type-badge.sev-info {
+  background: var(--well);
+  box-shadow: var(--debossed);
+  color: var(--muted);
+}
+
+[data-theme="night"] .status-pill.st-reported,
+[data-theme="night"] .status-pill.sev-high,
+[data-theme="night"] .rc-tag.rc-tag-safety,
+[data-theme="night"] .defect-type-badge.sev-high {
   color: var(--accent-hi);
+}
+
+[data-theme="night"] .status-pill.st-open,
+[data-theme="night"] .status-pill.sev-critical,
+[data-theme="night"] .rc-tag.tag-emergency,
+[data-theme="night"] .rc-tag.rc-tag-emergency,
+[data-theme="night"] .defect-type-badge.sev-critical {
+  background: rgba(239, 68, 68, 0.18);
+  color: var(--danger);
 }
 
 .saved-diary-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
@@ -1860,8 +1936,39 @@ body[data-level="WARN"] .dial-te {
   align-items: flex-start;
 }
 
+.risk-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .risk-card.risk-high {
+  border-left: 3px solid var(--danger);
+}
+
+.risk-card.risk-medium {
   border-left: 3px solid var(--accent);
+}
+
+#rail-thermal-bar[data-state="danger"] {
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger-glow);
+}
+
+#rail-thermal-status[data-state="danger"] {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+#rail-thermal-status[data-state="warn"] {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+[data-theme="night"] #rail-thermal-status[data-state="warn"] {
+  color: var(--accent-hi);
 }
 
 .risk-icon {
@@ -2044,9 +2151,28 @@ body[data-level="WARN"] .dial-te {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 24px 32px;
   text-align: center;
+  max-width: 340px;
+}
+
+.analyzing-text {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.analyzing-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.analyzing-sub:empty {
+  display: none;
 }
 
 .spinner {
@@ -2128,11 +2254,14 @@ body[data-level="WARN"] .dial-te {
 
 /* Compact 360px phones */
 @media (max-width: 375px) {
-  .main-content { padding: 16px 12px 24px; }
+  .main-content { padding: 16px 12px 48px; }
   .metal-dial { width: 214px; height: 214px; }
   .dial-num { font-size: 48px; }
   .dial-num.num-word { font-size: 40px; }
-  .corridor-row { grid-template-columns: 46px 1fr auto 26px 52px 38px; font-size: 11.5px; }
+  .meter-value-lg { font-size: 26px; }
+  .corridor-row { grid-template-columns: 42px minmax(0, 1fr) auto 22px 46px 34px; gap: 5px; padding: 7px 8px; font-size: 11.5px; }
+  .history-item { flex-wrap: wrap; }
+  .hi-actions { margin-left: auto; }
 }
 
 .desktop-only-label { display: none; }

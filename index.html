@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=JetBrains+Mono:wght@500;600&family=Karla:wght@400;500;700&family=Noto+Sans+Telugu:wght@500;600;700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/style.css?v=8.0" />
+  <link rel="stylesheet" href="/css/style.css?v=8.1" />
 </head>
 <body data-level="NONE" data-armed="false" data-track="BOTH">
   <div id="app" class="app-shell">
@@ -338,7 +338,7 @@
               <p class="capture-title">Capture Track Inspection Photo</p>
               <p class="capture-hint">Rail fracture, missing ERC clip, fishplate bolt, sleeper crack, or ballast void</p>
             </div>
-            <img id="captured-image-preview" class="image-preview hidden" alt="Captured inspection photo" />
+            <img id="captured-image-preview" class="image-preview" alt="Captured inspection photo" hidden />
           </div>
 
           <input type="file" id="defect-file-input" accept="image/*" capture="environment" class="sr-only" />
@@ -355,7 +355,7 @@
             </button>
           </div>
 
-          <div class="capture-btn-row hidden" id="photo-action-row">
+          <div class="capture-btn-row" id="photo-action-row" hidden>
             <button type="button" class="push-wide push-accent" id="btn-analyze-defect">
               <span class="push-edge"></span>
               <span class="push-front">Analyze with AI</span>
@@ -367,7 +367,7 @@
           </div>
 
           <!-- Offline IRPWM Manual Classifier -->
-          <div class="debossed-box hidden" id="manual-defect-panel">
+          <div class="debossed-box" id="manual-defect-panel" hidden>
             <div class="sec-micro-label" style="margin-top:0">OFFLINE IRPWM CLASSIFIER</div>
             <div class="field-group">
               <label for="offline-defect-select">Defect Classification</label>
@@ -394,7 +394,7 @@
         </div>
 
         <!-- Diagnosis Result Card -->
-        <div class="hw-card result-card hidden" id="defect-analysis-card">
+        <div class="hw-card result-card" id="defect-analysis-card" hidden>
           <div class="result-top">
             <span class="sec-micro-label" style="margin:0">INSPECTION REPORT</span>
             <span class="ink-pill" id="defect-type-badge">—</span>
@@ -443,11 +443,11 @@
           <button type="button" class="text-link" id="btn-export-defects">Export CSV</button>
         </div>
         <div class="chip-filter-row" id="defect-filter-bar" role="group" aria-label="Filter defects by severity">
-          <button type="button" class="filter-chip active" data-sev="ALL">All</button>
-          <button type="button" class="filter-chip" data-sev="CRITICAL">Critical</button>
-          <button type="button" class="filter-chip" data-sev="HIGH">High</button>
-          <button type="button" class="filter-chip" data-sev="MEDIUM">Medium</button>
-          <button type="button" class="filter-chip" data-sev="LOW">Low</button>
+          <button type="button" class="filter-chip active" data-sev="ALL" aria-pressed="true">All</button>
+          <button type="button" class="filter-chip" data-sev="CRITICAL" aria-pressed="false">Critical</button>
+          <button type="button" class="filter-chip" data-sev="HIGH" aria-pressed="false">High</button>
+          <button type="button" class="filter-chip" data-sev="MEDIUM" aria-pressed="false">Medium</button>
+          <button type="button" class="filter-chip" data-sev="LOW" aria-pressed="false">Low</button>
         </div>
         <div id="defect-history-list" class="records-stack">
           <p class="empty-copy">No inspection reports recorded yet.</p>
@@ -493,8 +493,8 @@
               <div class="inst-sub" id="voice-sub">Speak in Telugu or English, or type below</div>
             </div>
             <div class="seg-well" id="speech-lang-toggle" role="group" aria-label="Speech language">
-              <button type="button" class="seg-opt active" data-lang="te-IN">తెలుగు</button>
-              <button type="button" class="seg-opt" data-lang="en-IN">English</button>
+              <button type="button" class="seg-opt active" data-lang="te-IN" aria-pressed="true">తెలుగు</button>
+              <button type="button" class="seg-opt" data-lang="en-IN" aria-pressed="false">English</button>
             </div>
           </div>
 
@@ -531,7 +531,7 @@
         </div>
 
         <!-- Formatted Entry Preview -->
-        <div class="hw-card hidden" id="diary-entry-card">
+        <div class="hw-card" id="diary-entry-card" hidden>
           <div class="result-top">
             <span class="sec-micro-label" style="margin:0">STRUCTURED LOG ENTRY</span>
             <span class="mono muted-note" id="entry-time">—</span>
@@ -673,7 +673,7 @@
           <button type="button" class="filter-chip" data-cat="Protection">Protection</button>
         </div>
 
-        <div class="hw-card hidden" id="manual-answer-card">
+        <div class="hw-card" id="manual-answer-card" hidden>
           <div class="result-top">
             <strong id="maa-title" class="inst-name">—</strong>
             <button type="button" class="text-link" id="btn-copy-rule">Copy</button>
@@ -844,16 +844,17 @@
             </button>
           </div>
 
-          <p class="attribution-note">RailRaksha v8.0 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
+          <p class="attribution-note">RailRaksha v8.1 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
         </div>
       </div>
     </div>
 
     <!-- Analyzing Overlay -->
-    <div class="analyzing-overlay hidden" id="analyzing-overlay" role="status" aria-live="polite">
+    <div class="analyzing-overlay" id="analyzing-overlay" role="status" aria-live="polite" hidden>
       <div class="hw-card analyzing-box">
         <div class="spinner"></div>
-        <p id="analyzing-text">Analyzing with Gemini AI...</p>
+        <p id="analyzing-text" class="analyzing-text">Analyzing with Gemini AI...</p>
+        <p class="analyzing-sub" id="analyzing-sub"></p>
       </div>
     </div>
 
@@ -864,6 +865,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/app.js?v=8.0"></script>
+  <script type="module" src="/js/app.js?v=8.1"></script>
 </body>
 </html>

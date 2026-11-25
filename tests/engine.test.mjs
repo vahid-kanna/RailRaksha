@@ -257,3 +257,288 @@ test('v8.0 live-data-first corridor state & clock-skew safety', async () => {
   assert.equal(ai.defaultModel, 'gemini-3-flash-preview');
   assert.ok(ai.fallbackModels.includes('gemini-3.5-flash'));
 });
+
+/* ── v8.1 Regression & Quota-Resilience Suite ─────────────────────────────── */
+import {
+  CORS_HEADERS,
+  handleCorridorLive,
+  inferDirectionFromEndpoints,
+} from '../worker/handlers.js';
+import { LiveTrainService } from '../js/live-trains.js';
+
+function createMemoryCache() {
+  const store = new Map();
+  return {
+    async match(req) {
+      const key = typeof req === 'string' ? req : req.url;
+      const hit = store.get(key);
+      return hit ? hit.clone() : undefined;
+    },
+    async put(req, res) {
+      const key = typeof req === 'string' ? req : req.url;
+      store.set(key, res.clone());
+    },
+    _store: store,
+  };
+}
+
+test('v8.1 offline fallback: LiveTrainService.getTrainStates(293, nowMs) returns scheduled trains at 02:58 AM and all IST hours', async () => {
+  // Catches the old candidateRuns(nowMs) bug where nowMs was passed as workerKm and nowMs became undefined (NaN)
+  const svc = new LiveTrainService();
+  svc.preferLive = false;
+
+  for (const [hh, mm] of [[2, 58], [0, 15], [8, 30], [14, 15], [21, 45]]) {
+    const t = ist(hh, mm);
+    const states = svc.getTrainStates(293, t);
+    assert.ok(states.length > 0, `Expected scheduled trains at ${hh}:${String(mm).padStart(2, '0')} IST`);
+    for (const s of states) {
+      assert.equal(s.source, 'SCHEDULE');
+      assert.equal(s.confirmed, false);
+      assert.ok(Number.isFinite(s.kmNominal), `Expected finite kmNominal for ${s.no}`);
+    }
+  }
+
+  // Also works when workerKm is omitted/nullish (defaults to SKM 293) and when preferLive=true hits quota 429 empty fallback
+  const at0258 = ist(2, 58);
+  assert.ok(svc.getTrainStates(undefined, at0258).length > 0);
+
+  const quotaSvc = new LiveTrainService({
+    fetchCorridorLive: async () => ({
+      ok: false,
+      quotaExceeded: true,
+      stale: false,
+      source: 'schedule-fallback',
+      trains: [],
+    }),
+  });
+  await quotaSvc.poll(293, at0258, true);
+  const fs = quotaSvc.feedStatus(at0258);
+  assert.equal(fs.state, 'QUOTA');
+  assert.equal(fs.quotaExceeded, true);
+  assert.equal(fs.liveCount, 0);
+  const fallbackStates = quotaSvc.getTrainStates(293, at0258);
+  assert.ok(fallbackStates.length > 0, 'Quota empty fallback must return scheduled trains at 02:58 AM IST');
+  assert.ok(fallbackStates.every(t => t.source === 'SCHEDULE'));
+
+  // Stale quota snapshot (< 15 min) is kept for QUOTA status and falls back to schedule once aged > 15 min
+  const staleSnapTime = at0258 - 5 * 60000;
+  const staleSvc = new LiveTrainService({
+    fetchCorridorLive: async () => ({
+      ok: false,
+      quotaExceeded: true,
+      stale: true,
+      updatedAt: new Date(staleSnapTime).toISOString(),
+      trains: [{
+        no: '17210',
+        name: 'Seshadri Express',
+        dir: 'DN',
+        isLive: true,
+        delayMin: 5,
+        boards: { OGL: { type: 'upcoming', expectedArrival: new Date(at0258 + 6 * 60000).toISOString(), delayMinutes: 5 } },
+        detail: null,
+      }],
+    }),
+  });
+  await staleSvc.poll(293, at0258, true);
+  assert.equal(staleSvc.feedStatus(at0258).state, 'QUOTA');
+  assert.equal(staleSvc.feedStatus(at0258).stale, true);
+  assert.equal(staleSvc.getTrainStates(293, at0258)[0].source, 'LIVE');
+  // Once stale snapshot is > 15 min old, falls back cleanly to schedule
+  assert.ok(staleSvc.getTrainStates(293, at0258 + 20 * 60000).every(t => t.source === 'SCHEDULE'));
+});
+
+test('v8.1 CORRIDOR_KM alignment with STATION_BY_CODE (OGL=321, NLR=200, GDR=162, CL=356, BVRT=232)', () => {
+  assert.equal(STATION_BY_CODE.OGL.km, 321);
+  assert.equal(STATION_BY_CODE.NLR.km, 200);
+  assert.equal(STATION_BY_CODE.GDR.km, 162);
+  assert.equal(STATION_BY_CODE.CL.km, 356);
+  assert.equal(STATION_BY_CODE.BVRT.km, 232);
+
+  // Verify worker CORRIDOR_KM via normalizeRailRadarPayload corridor_stops & inferDirectionFromEndpoints
+  const norm = normalizeRailRadarPayload({
+    data: {
+      trainNumber: '12711',
+      status: 'running',
+      currentLocation: { stationCode: 'OGL', speed: 100, hasDeparted: true },
+      route: [
+        { stationCode: 'GDR' },
+        { stationCode: 'NLR' },
+        { stationCode: 'BVRT' },
+        { stationCode: 'SKM' },
+        { stationCode: 'OGL' },
+        { stationCode: 'CL' },
+        { stationCode: 'BZA' },
+      ],
+    },
+  });
+  const kmMap = Object.fromEntries(norm.corridor_stops.map(s => [s.code, s.km]));
+  assert.deepEqual(kmMap, {
+    GDR: STATION_BY_CODE.GDR.km,
+    NLR: STATION_BY_CODE.NLR.km,
+    BVRT: STATION_BY_CODE.BVRT.km,
+    SKM: STATION_BY_CODE.SKM.km,
+    OGL: STATION_BY_CODE.OGL.km,
+    CL: STATION_BY_CODE.CL.km,
+    BZA: STATION_BY_CODE.BZA.km,
+  });
+
+  assert.equal(inferDirectionFromEndpoints('GDR', 'NLR'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('NLR', 'BVRT'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('BVRT', 'OGL'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('OGL', 'CL'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('CL', 'OGL'), 'DN');
+  assert.equal(inferDirectionFromEndpoints('OGL', 'GDR'), 'DN');
+  assert.equal(inferDirectionFromEndpoints('NLR', 'BTTR'), 'UP');
+  assert.equal(inferDirectionFromEndpoints('OGL', 'CLX'), 'UP');
+});
+
+test('v8.1 handleCorridorLive: 429 quota fallback returns HTTP 200, caches stale copy, and queries <=2 boards by default', async () => {
+  const origFetch = globalThis.fetch;
+  const origCaches = globalThis.caches;
+  const memCache = createMemoryCache();
+  globalThis.caches = { default: memCache };
+
+  try {
+    const calledUrls = [];
+    globalThis.fetch = async (url) => {
+      calledUrls.push(String(url));
+      return new Response(
+        JSON.stringify({ error: { code: 'quota_exceeded', message: 'Monthly limit reached' } }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const res429 = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live'),
+      { RAILRADAR_API_KEY: 'test-env-key' }
+    );
+    assert.equal(res429.status, 200);
+    assert.match(res429.headers.get('Cache-Control') || '', /s-maxage=180/);
+    const body429 = await res429.json();
+    assert.equal(body429.ok, false);
+    assert.equal(body429.quotaExceeded, true);
+    assert.equal(body429.stale, false);
+    assert.equal(body429.source, 'schedule-fallback');
+    assert.deepEqual(body429.trains, []);
+    assert.equal(calledUrls.length, 2);
+    assert.ok(calledUrls.some(u => u.includes('/stations/OGL/live')));
+    assert.ok(calledUrls.some(u => u.includes('/stations/NLR/live')));
+    assert.equal(calledUrls.some(u => u.includes('/v1/trains/')), false, 'No automatic train detail enrichment on routine polls');
+
+    // Now seed cache via successful OGL + NLR poll, then simulate 429 on ?fresh=1 and verify stale fallback
+    calledUrls.length = 0;
+    memCache._store.clear();
+    globalThis.fetch = async (url) => {
+      calledUrls.push(String(url));
+      const u = String(url);
+      if (u.includes('/stations/NLR/live')) {
+        return new Response(JSON.stringify({
+          success: true,
+          meta: { timestamp: '2026-11-26T02:55:00+05:30' },
+          data: {
+            trains: [{
+              train: { number: '12711', name: 'Pinakini Express', type: 'SF', source: 'BZA', destination: 'MAS' },
+              live: { type: 'upcoming', expectedArrivalTime: '2026-11-26T03:00:00+05:30', delayMinutes: 4 },
+            }],
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        meta: { timestamp: '2026-11-26T02:55:00+05:30' },
+        data: {
+          trains: [{
+            train: { number: '12711', name: 'Pinakini Express', type: 'SF', source: 'BZA', destination: 'MAS' },
+            live: { type: 'upcoming', expectedArrivalTime: '2026-11-26T02:10:00+05:30', delayMinutes: 4 },
+          }],
+        },
+      }), { status: 200 });
+    };
+
+    const okRes = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live'),
+      { RAILRADAR_API_KEY: 'test-env-key' }
+    );
+    assert.equal(okRes.status, 200);
+    assert.match(okRes.headers.get('Cache-Control') || '', /s-maxage=300/);
+    const okBody = await okRes.json();
+    assert.equal(okBody.ok, true);
+    assert.equal(okBody.liveEnriched, 0);
+    assert.equal(okBody.trains.length, 1);
+    assert.equal(okBody.trains[0].dir, 'DN'); // OGL (321) 02:10 -> NLR (200) 03:00 => DN
+
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: { code: 'quota_exceeded' } }),
+      { status: 429 }
+    );
+    const staleRes = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live?fresh=1'),
+      { RAILRADAR_API_KEY: 'test-env-key' }
+    );
+    assert.equal(staleRes.status, 200);
+    const staleBody = await staleRes.json();
+    assert.equal(staleBody.ok, false);
+    assert.equal(staleBody.quotaExceeded, true);
+    assert.equal(staleBody.stale, true);
+    assert.equal(staleBody.source, 'schedule-fallback');
+    assert.equal(staleBody.trains.length, 1);
+    assert.equal(staleBody.trains[0].no, '12711');
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.caches = origCaches;
+  }
+});
+
+test('v8.1 X-RailRadar-Key CORS header & personal key override in handleCorridorLive and handleLiveStatus', async () => {
+  assert.match(CORS_HEADERS['Access-Control-Allow-Headers'], /\bX-RailRadar-Key\b/);
+
+  const preflightCorridor = await handleCorridorLive(new Request('https://railraksha.tech/api/corridor-live', { method: 'OPTIONS' }), {});
+  assert.equal(preflightCorridor.status, 204);
+  assert.match(preflightCorridor.headers.get('Access-Control-Allow-Headers') || '', /\bX-RailRadar-Key\b/);
+
+  const preflightLive = await handleLiveStatus(new Request('https://railraksha.tech/api/live-status?train=12711', { method: 'OPTIONS' }), {});
+  assert.equal(preflightLive.status, 204);
+  assert.match(preflightLive.headers.get('Access-Control-Allow-Headers') || '', /\bX-RailRadar-Key\b/);
+
+  const origFetch = globalThis.fetch;
+  const origCaches = globalThis.caches;
+  globalThis.caches = { default: createMemoryCache() };
+
+  try {
+    const authSeen = [];
+    globalThis.fetch = async (url, init) => {
+      authSeen.push({ url: String(url), auth: init?.headers?.Authorization || init?.headers?.authorization });
+      if (String(url).includes('/stations/')) {
+        return new Response(JSON.stringify({ success: true, data: { trains: [] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        data: { trainNumber: '12711', status: 'running', currentLocation: { stationCode: 'SKM', hasDeparted: true } },
+      }), { status: 200 });
+    };
+
+    // Personal key works even with empty env, and overrides env.RAILRADAR_API_KEY
+    const cResp = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live?scope=skm', {
+        headers: { 'X-RailRadar-Key': 'personal-rr-key-999' },
+      }),
+      { RAILRADAR_API_KEY: 'server-env-key-111' }
+    );
+    assert.equal(cResp.status, 200);
+    assert.equal(authSeen.length, 1);
+    assert.ok(authSeen[0].url.includes('/stations/SKM/live'));
+    assert.equal(authSeen[0].auth, 'Bearer personal-rr-key-999');
+
+    const lResp = await handleLiveStatus(
+      new Request('https://railraksha.tech/api/live-status?train=12711', {
+        headers: { 'X-RailRadar-Key': 'personal-rr-key-999' },
+      }),
+      {}
+    );
+    assert.equal(lResp.status, 200);
+    assert.equal(authSeen[1].auth, 'Bearer personal-rr-key-999');
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.caches = origCaches;
+  }
+});

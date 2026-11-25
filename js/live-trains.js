@@ -196,20 +196,23 @@ export function buildLiveCorridorState(entry, refNowMs) {
     }
   } else {
     const anchors = ['SKM', 'OGL', 'NLR'];
+    let bestAbsDtH = Infinity;
     for (const code of anchors) {
       const b = entry.boards?.[code];
       if (!b) continue;
       const tMs = Date.parse(b.expectedArrival || b.expectedDeparture || '');
       if (!Number.isFinite(tMs)) continue;
       const st = STATION_BY_CODE[code];
+      if (!st) continue;
       const dtH = (tMs - refNowMs) / 3600000;
-      if (Math.abs(dtH) > 2.5) continue;
+      const absDtH = Math.abs(dtH);
+      if (absDtH > 2.5 || absDtH >= bestAbsDtH) continue;
+      bestAbsDtH = absDtH;
       lastStation = code;
       kmNominal = st.km - sign * (nomSpeed * dtH);
       kmLead = kmNominal + sign * 2.0;
       kmLag = kmNominal - sign * 2.0;
       phase = b.type === 'at-station' ? 'HALTED' : 'RUNNING';
-      break;
     }
   }
 
@@ -244,15 +247,16 @@ export class LiveTrainService {
     this.fetchCorridorLive = opts.fetchCorridorLive || null;
     this.fetchLive = opts.fetchLive || null;
     this.liveByKey = new Map();
-    this.corridorSnapshot = null; // { trains, fetchedAt, serverNowMs, anchors }
+    this.corridorSnapshot = null; // { trains, fetchedAt, serverNowMs, anchors, stale, quotaExceeded }
     this.lastSuccessAt = 0;
     this.lastErrorAt = 0;
+    this.quotaExceeded = false;
     this.preferLive = true;
     this.inflight = false;
   }
 
   /**
-   * Live-Data-First poll: hits `/api/corridor-live` (OGL/SKM/NLR live boards + live detail)
+   * Live-Data-First poll: hits `/api/corridor-live` (OGL/NLR live boards, quota-safe)
    * catching every real-time delayed & special train across the corridor.
    */
   async poll(workerKm, nowMs = Date.now(), forceFresh = false) {
@@ -267,12 +271,27 @@ export class LiveTrainService {
           clearTimeout(timer);
           if (snap && snap.ok && Array.isArray(snap.trains)) {
             const parsedServerMs = Date.parse(snap.updatedAt || '');
+            this.quotaExceeded = false;
             this.corridorSnapshot = {
               ...snap,
               fetchedAt: nowMs,
               serverNowMs: Number.isFinite(parsedServerMs) ? parsedServerMs : nowMs,
             };
             this.lastSuccessAt = nowMs;
+          } else if (snap && snap.ok === false) {
+            this.quotaExceeded = Boolean(snap.quotaExceeded);
+            this.lastErrorAt = nowMs;
+            const parsedServerMs = Date.parse(snap.updatedAt || '');
+            const staleAgeMs = Number.isFinite(parsedServerMs) ? Math.max(0, nowMs - parsedServerMs) : 0;
+            if (snap.stale && Array.isArray(snap.trains) && snap.trains.length > 0 && staleAgeMs <= CFG.liveFreshMaxAgeS * 1000) {
+              this.corridorSnapshot = {
+                ...snap,
+                fetchedAt: Number.isFinite(parsedServerMs) ? parsedServerMs : nowMs,
+                serverNowMs: Number.isFinite(parsedServerMs) ? parsedServerMs : nowMs,
+              };
+            } else if (!Array.isArray(snap.trains) || snap.trains.length === 0 || !snap.stale) {
+              this.corridorSnapshot = null;
+            }
           }
         } catch {
           this.lastErrorAt = nowMs;
@@ -285,11 +304,16 @@ export class LiveTrainService {
 
   /**
    * Returns corridor train states at `nowMs`.
-   * Live RailRadar corridor feed always takes priority whenever fresh (< 5 min).
-   * Embedded 53-train timetable serves strictly as offline / dead-zone fallback.
+   * Live RailRadar corridor feed always takes priority whenever fresh (< 6 min, or < 15 min for edge stale copy).
+   * Embedded 53-train timetable serves cleanly as offline / quota / dead-zone fallback.
    */
   getTrainStates(workerKm, nowMs = Date.now()) {
-    const liveFresh = this.preferLive && this.corridorSnapshot && (nowMs - this.corridorSnapshot.fetchedAt < 300000);
+    const maxSnapAgeMs = this.corridorSnapshot?.stale ? CFG.liveFreshMaxAgeS * 1000 : 360000;
+    const liveFresh = this.preferLive
+      && this.corridorSnapshot
+      && Array.isArray(this.corridorSnapshot.trains)
+      && this.corridorSnapshot.trains.length > 0
+      && (nowMs - this.corridorSnapshot.fetchedAt < maxSnapAgeMs);
     const out = [];
     const seenNos = new Set();
 
@@ -303,9 +327,9 @@ export class LiveTrainService {
       }
     }
 
-    // Offline / fallback schedule path when live feed is unavailable
+    // Offline / fallback schedule path when live feed is unavailable or empty
     if (!liveFresh || out.length === 0) {
-      for (const run of candidateRuns(nowMs)) {
+      for (const run of candidateRuns(Number.isFinite(workerKm) ? workerKm : 293, nowMs)) {
         if (seenNos.has(run.train.no)) continue;
         const live = this.liveByKey.get(run.key) || null;
         const est = estimatePosition(run, live, nowMs);
@@ -324,12 +348,28 @@ export class LiveTrainService {
   }
 
   feedStatus(nowMs = Date.now()) {
-    if (!this.preferLive) return { state: 'OFFLINE', ageS: Infinity, liveCount: 0 };
-    if (!this.lastSuccessAt) return { state: 'SCHEDULE', ageS: Infinity, liveCount: 0 };
-    const ageS = (nowMs - this.lastSuccessAt) / 1000;
+    if (!this.preferLive) return { state: 'OFFLINE', ageS: Infinity, liveCount: 0, quotaExceeded: false };
     const liveCount = this.corridorSnapshot?.trains?.length || 0;
-    if (ageS < 180) return { state: 'LIVE', ageS, liveCount };
-    if (ageS < 420) return { state: 'STALE', ageS, liveCount };
-    return { state: 'SCHEDULE', ageS, liveCount: 0 };
+    if (this.quotaExceeded) {
+      const hasFreshStale = Boolean(
+        this.corridorSnapshot?.stale
+        && liveCount > 0
+        && (nowMs - this.corridorSnapshot.fetchedAt < CFG.liveFreshMaxAgeS * 1000)
+      );
+      const refTs = this.corridorSnapshot?.fetchedAt || this.lastSuccessAt || this.lastErrorAt;
+      const ageS = refTs ? Math.max(0, (nowMs - refTs) / 1000) : Infinity;
+      return {
+        state: 'QUOTA',
+        ageS,
+        liveCount: hasFreshStale ? liveCount : 0,
+        quotaExceeded: true,
+        stale: hasFreshStale,
+      };
+    }
+    if (!this.lastSuccessAt) return { state: 'SCHEDULE', ageS: Infinity, liveCount: 0, quotaExceeded: false };
+    const ageS = (nowMs - this.lastSuccessAt) / 1000;
+    if (ageS < 180) return { state: 'LIVE', ageS, liveCount, quotaExceeded: false };
+    if (ageS < 420) return { state: 'STALE', ageS, liveCount, quotaExceeded: false };
+    return { state: 'SCHEDULE', ageS, liveCount: 0, quotaExceeded: false };
   }
 }

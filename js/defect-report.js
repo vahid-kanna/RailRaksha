@@ -102,7 +102,10 @@ let activeFilter = 'ALL';
 export function initDefectReport(els) {
   elements = els;
   renderOfflinePresets();
+  syncFilterButtons();
   loadDefectHistory();
+  const overlay = document.getElementById('analyzing-overlay');
+  if (overlay && !overlay.dataset.active) showAnalyzingOverlay(false);
 
   elements.btnCamera?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -118,21 +121,34 @@ export function initDefectReport(els) {
   elements.uploadInput?.addEventListener('change', handleFileSelect);
   elements.btnAnalyze?.addEventListener('click', analyzeDefect);
   elements.btnRetake?.addEventListener('click', resetPhotoOnly);
-  elements.btnToggleManualDefect?.addEventListener('click', toggleManualPanel);
+  elements.btnToggleManualDefect?.addEventListener('click', () => toggleManualPanel());
   elements.btnLogOfflineDefect?.addEventListener('click', submitOfflineDefect);
   elements.btnShareReport?.addEventListener('click', shareReport);
   elements.btnNewDefect?.addEventListener('click', resetDefectForm);
-  elements.btnExportDefects?.addEventListener('click', exportDefectsTxt);
+  elements.btnExportDefects?.addEventListener('click', exportDefectsCsv);
 
   elements.defectFilterBar?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-filter]');
+    const btn = e.target.closest('[data-sev]');
     if (!btn) return;
-    activeFilter = btn.dataset.filter;
-    elements.defectFilterBar.querySelectorAll('[data-filter]').forEach(b => {
-      b.classList.toggle('active', b.dataset.filter === activeFilter);
-    });
+    activeFilter = (btn.dataset.sev || 'ALL').toUpperCase();
+    syncFilterButtons();
     loadDefectHistory();
   });
+}
+
+function syncFilterButtons() {
+  elements.defectFilterBar?.querySelectorAll('[data-sev]').forEach(b => {
+    const isAct = (b.dataset.sev || '').toUpperCase() === activeFilter;
+    b.classList.toggle('active', isAct);
+    b.setAttribute('aria-pressed', String(isAct));
+  });
+}
+
+function setHidden(el, hide) {
+  if (!el) return;
+  const hidden = Boolean(hide);
+  el.hidden = hidden;
+  el.classList.toggle('hidden', hidden);
 }
 
 function renderOfflinePresets() {
@@ -146,8 +162,9 @@ function renderOfflinePresets() {
 function toggleManualPanel(forceOpen = null) {
   const panel = elements.manualDefectPanel;
   if (!panel) return;
-  const nextHidden = forceOpen === true ? false : forceOpen === false ? true : !panel.hidden;
-  panel.hidden = nextHidden;
+  const currentlyHidden = panel.hidden || panel.classList.contains('hidden');
+  const nextHidden = forceOpen === true ? false : forceOpen === false ? true : !currentlyHidden;
+  setHidden(panel, nextHidden);
   elements.btnToggleManualDefect?.setAttribute('aria-expanded', String(!nextHidden));
 }
 
@@ -191,19 +208,22 @@ function compressImage(dataUrl, maxDimension, quality, callback) {
 function displayPreview(dataUrl) {
   if (elements.imagePreview) {
     elements.imagePreview.src = dataUrl;
-    elements.imagePreview.hidden = false;
+    setHidden(elements.imagePreview, false);
   }
   elements.captureZone?.classList.add('has-photo');
-  if (elements.capturePlaceholder) elements.capturePlaceholder.hidden = true;
-  if (elements.photoActionRow) elements.photoActionRow.hidden = false;
+  setHidden(elements.capturePlaceholder, true);
+  setHidden(elements.photoActionRow, false);
 }
 
 function resetPhotoOnly() {
   capturedImageBase64 = null;
-  if (elements.imagePreview) { elements.imagePreview.hidden = true; elements.imagePreview.src = ''; }
+  if (elements.imagePreview) {
+    setHidden(elements.imagePreview, true);
+    elements.imagePreview.src = '';
+  }
   elements.captureZone?.classList.remove('has-photo');
-  if (elements.capturePlaceholder) elements.capturePlaceholder.hidden = false;
-  if (elements.photoActionRow) elements.photoActionRow.hidden = true;
+  setHidden(elements.capturePlaceholder, false);
+  setHidden(elements.photoActionRow, true);
   if (elements.fileInput) elements.fileInput.value = '';
   if (elements.uploadInput) elements.uploadInput.value = '';
 }
@@ -267,6 +287,8 @@ If the photo DOES show railway track/infrastructure, respond ONLY in this exact 
       ? 'Offline — use Quick Offline IRPWM Classifier below'
       : 'AI unavailable — opened Offline IRPWM Classifier below';
     showToast(reason, 'warn');
+  } finally {
+    showAnalyzingOverlay(false);
   }
 }
 
@@ -293,7 +315,7 @@ function submitOfflineDefect() {
 }
 
 function displayAnalysis(analysis) {
-  if (elements.defectAnalysisCard) elements.defectAnalysisCard.hidden = false;
+  setHidden(elements.defectAnalysisCard, false);
 
   if (elements.defectTypeBadge) {
     const cls = {
@@ -303,7 +325,7 @@ function displayAnalysis(analysis) {
       LOW: 'sev-low',
       INFO: 'sev-info',
     };
-    elements.defectTypeBadge.className = `defect-type-badge ${cls[analysis.severity] || 'sev-low'}`;
+    elements.defectTypeBadge.className = `ink-pill defect-type-badge ${cls[analysis.severity] || 'sev-low'}`;
     elements.defectTypeBadge.innerHTML = `${severityIcon(analysis.severity)} <span>${escapeHtml(analysis.defectType)}</span>`;
   }
 
@@ -319,12 +341,12 @@ function displayAnalysis(analysis) {
   if (elements.irpwmReference) elements.irpwmReference.textContent = `Reference: ${analysis.irpwmReference || 'IRPWM'}`;
 
   if (elements.detailGeneralInfo) {
-    const row = elements.detailGeneralInfo.closest('.detail-row');
+    const row = elements.detailGeneralInfo.closest('.debossed-box, .detail-row');
     if (analysis.generalInfo) {
       elements.detailGeneralInfo.textContent = analysis.generalInfo;
-      if (row) row.hidden = false;
-    } else if (row) {
-      row.hidden = true;
+      setHidden(row, false);
+    } else {
+      setHidden(row, true);
     }
   }
 
@@ -336,20 +358,18 @@ function displayAnalysis(analysis) {
     });
   }
 
-  if (elements.btnShareReport) {
-    elements.btnShareReport.hidden = analysis.reportingRequired === false;
-  }
+  setHidden(elements.btnShareReport, analysis.reportingRequired === false);
   elements.defectAnalysisCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function severityIcon(severity) {
   return {
-    CRITICAL: Icons.dot(10, '#EF4444'),
-    HIGH: Icons.dot(10, '#F97316'),
-    MEDIUM: Icons.dot(10, '#F59E0B'),
-    LOW: Icons.dot(10, '#22C55E'),
-    INFO: Icons.dot(10, '#94A3B8'),
-  }[severity] || Icons.dot(10, '#94A3B8');
+    CRITICAL: Icons.dot(10, '#C81E1E'),
+    HIGH: Icons.dot(10, '#E5481F'),
+    MEDIUM: Icons.dot(10, '#D97706'),
+    LOW: Icons.dot(10, '#566375'),
+    INFO: Icons.dot(10, '#566375'),
+  }[severity] || Icons.dot(10, '#566375');
 }
 
 function setText(el, text) {
@@ -432,9 +452,7 @@ async function loadDefectHistory() {
 
   const reports = activeFilter === 'ALL'
     ? all
-    : activeFilter === 'FIXED'
-    ? all.filter(r => r.status === 'FIXED')
-    : all.filter(r => r.status !== 'FIXED');
+    : all.filter(r => String(r.severity || '').toUpperCase() === activeFilter);
 
   elements.defectHistoryList.innerHTML = '';
 
@@ -490,19 +508,52 @@ async function loadDefectHistory() {
   });
 }
 
-async function exportDefectsTxt() {
+function csvCell(value) {
+  const s = String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+async function exportDefectsCsv() {
   const reports = await getDefectReports();
   if (reports.length === 0) {
     showToast('No defect reports to export', 'warn');
     return;
   }
-  const content = reports.map(generateReportText).join('\n\n==============================\n\n');
-  downloadTextFile(`railraksha-defects-${getISTDateISO()}.txt`, content);
+  const headers = [
+    'Date',
+    'Timestamp',
+    'Status',
+    'Severity',
+    'Defect Type',
+    'IRPWM Code',
+    'Speed Restriction',
+    'Location',
+    'Description',
+    'Immediate Action',
+    'IRPWM Reference',
+    'Mode',
+  ];
+  const rows = reports.map(r => [
+    r.date || getISTDateISO(r.createdAt || r.timestamp || Date.now()),
+    r.timestamp || r.createdAt || '',
+    r.status || 'OPEN',
+    r.severity || '',
+    r.defectType || '',
+    r.irpwmCode || '',
+    r.speedRestriction || '',
+    r.gps || '',
+    r.description || '',
+    r.immediateAction || '',
+    r.irpwmReference || '',
+    r.mode || '',
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  downloadTextFile(`railraksha-defects-${getISTDateISO()}.csv`, csv, 'text/csv;charset=utf-8');
   showToast(`Exported ${reports.length} defect report(s)`, 'ok');
 }
 
-function downloadTextFile(filename, text) {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+function downloadTextFile(filename, text, mimeType = 'text/csv;charset=utf-8') {
+  const blob = new Blob([text], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -516,7 +567,10 @@ function downloadTextFile(filename, text) {
 function resetDefectForm() {
   resetPhotoOnly();
   if (elements.offlineDefectNotes) elements.offlineDefectNotes.value = '';
-  if (elements.defectAnalysisCard) elements.defectAnalysisCard.hidden = true;
+  if (elements.defectAnalysisCard) {
+    setHidden(elements.defectAnalysisCard, true);
+    delete elements.defectAnalysisCard.dataset.analysis;
+  }
 }
 
 function escapeHtml(str) {
@@ -528,11 +582,13 @@ function escapeHtml(str) {
 function showAnalyzingOverlay(show, title = '', sub = '') {
   const overlay = document.getElementById('analyzing-overlay');
   if (!overlay) return;
-  overlay.hidden = !show;
+  if (show) overlay.dataset.active = '1';
+  else delete overlay.dataset.active;
+  setHidden(overlay, !show);
   overlay.setAttribute('aria-hidden', String(!show));
   if (show) {
-    const t = overlay.querySelector('.analyzing-text');
-    const s = overlay.querySelector('.analyzing-sub');
+    const t = overlay.querySelector('#analyzing-text, .analyzing-text');
+    const s = overlay.querySelector('#analyzing-sub, .analyzing-sub');
     if (t) t.textContent = title;
     if (s) s.textContent = sub;
   }

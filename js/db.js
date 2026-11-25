@@ -196,7 +196,7 @@ export async function exportAllData() {
   ]);
   return {
     app: 'RailRaksha',
-    version: '7.0',
+    version: '8.1',
     exportedAt: new Date().toISOString(),
     istDate: getISTDateISO(),
     diaryEntries,
