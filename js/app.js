@@ -36,8 +36,12 @@ function pulseHaptic(ms = 25) {
 }
 
 function getRailRadarHeaders() {
-  const key = (getConfig('railradar_key') || '').trim();
-  return key ? { 'X-RailRadar-Key': key } : {};
+  const headers = {};
+  const rrKey = (getConfig('railradar_key') || '').trim();
+  const rcKey = (getConfig('railcore_key') || '').trim();
+  if (rrKey) headers['X-RailRadar-Key'] = rrKey;
+  if (rcKey) headers['X-RailCore-Key'] = rcKey;
+  return headers;
 }
 
 // ── Preferences Store ────────────────────────────────────────────────────────
@@ -789,7 +793,7 @@ function render(worker, r, allCorridorTrains) {
     if (proxRight) proxRight.textContent = closest.atSite ? '0:00' : fmtClock(closest.etaLowerS);
   } else {
     if (nTitle) nTitle.textContent = 'No Approaching Train';
-    if (nSub) nSub.textContent = fs.state === 'LIVE' ? 'Live RailRadar corridor clear' : 'Offline timetable clear';
+    if (nSub) nSub.textContent = fs.state === 'LIVE' ? 'Live corridor clear' : 'Offline timetable clear';
     if (nWell) nWell.classList.remove('well-lit');
     if (proxFill) proxFill.style.width = '6%';
     if (proxThumb) proxThumb.style.left = '6%';
@@ -1020,7 +1024,7 @@ const SETTING_FIELDS = [
   'work_station_a', 'work_station_b',
   'voice_lang', 'theme',
   'ai_base_url', 'ai_model', 'ai_api_key',
-  'owm_api_key', 'railradar_key',
+  'owm_api_key', 'railradar_key', 'railcore_key',
   'alert_dist_critical', 'alert_dist_warn', 'alert_dist_prepare',
   'alert_min_critical',  'alert_min_warn',  'alert_min_prepare',
 ];
@@ -1086,7 +1090,8 @@ async function openSettings() {
       statusEl.textContent = 'Offline — local schedule, defects, diary & IRPWM ready';
     } else if (health.reachable && health.services) {
       const aiTxt = health.services.ai?.configured ? `AI: ${health.services.ai.model}` : 'AI: Offline fallback';
-      const liveTxt = health.services.liveTrains?.configured ? 'Live Feed: RailRadar v1' : 'Live Feed: Schedule';
+      const lt = health.services.liveTrains;
+      const liveTxt = lt?.configured ? `Live Feed: ${lt.provider || 'connected'}` : 'Live Feed: Schedule';
       statusEl.textContent = `Cloudflare Edge · ${aiTxt} · ${liveTxt}`;
     } else {
       statusEl.textContent = 'Local preview mode';
@@ -1100,6 +1105,8 @@ function closeSettings() {
 }
 
 function saveSettings() {
+  const prevRR = (getConfig('railradar_key') || '').trim();
+  const prevRC = (getConfig('railcore_key') || '').trim();
   SETTING_FIELDS.forEach(key => {
     const el = document.getElementById(`setting-${key}`);
     if (el) localStorage.setItem(key, el.value.trim());
@@ -1110,7 +1117,14 @@ function saveSettings() {
   closeSettings();
   window.dispatchEvent(new CustomEvent('railraksha:settings-updated'));
   loop();
-  showToast('Settings saved', 'ok');
+  const nextRR = (getConfig('railradar_key') || '').trim();
+  const nextRC = (getConfig('railcore_key') || '').trim();
+  if (nextRR !== prevRR || nextRC !== prevRC) {
+    window._pollCorridorNow?.(true);
+    showToast('Settings saved — syncing live feed...', 'info');
+  } else {
+    showToast('Settings saved', 'ok');
+  }
 }
 
 // ── Toast System ─────────────────────────────────────────────────────────────

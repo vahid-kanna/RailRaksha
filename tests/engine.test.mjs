@@ -542,3 +542,184 @@ test('v8.1 X-RailRadar-Key CORS header & personal key override in handleCorridor
     globalThis.caches = origCaches;
   }
 });
+
+/* ── v8.2 Dual-Provider (RailRadar + RailCore), departedAt & Interpolation ── */
+import { normalizeRailCorePayload } from '../worker/handlers.js';
+import { buildLiveCorridorState } from '../js/live-trains.js';
+
+test('v8.2 RailRadar 429 automatically fails over to RailCore v1 in handleCorridorLive and handleLiveStatus', async () => {
+  assert.match(CORS_HEADERS['Access-Control-Allow-Headers'], /\bX-RailCore-Key\b/);
+
+  const healthResp = await handleHealth(
+    new Request('https://railraksha.tech/api/health'),
+    { RAILRADAR_API_KEY: 'rr-key', RAILCORE_API_KEY: 'rc-key' }
+  );
+  const health = await healthResp.json();
+  assert.equal(health.services.liveTrains.provider, 'railradar+railcore');
+  assert.equal(health.services.liveTrains.railcoreConfigured, true);
+
+  const origFetch = globalThis.fetch;
+  const origCaches = globalThis.caches;
+  globalThis.caches = { default: createMemoryCache() };
+
+  try {
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      const u = String(url);
+      calls.push({ url: u, headers: init?.headers || {} });
+      if (u.startsWith('https://api.railradar.in/')) {
+        return new Response(
+          JSON.stringify({ success: false, error: { code: 'TOO_MANY_REQUESTS', message: 'Monthly quota exceeded' } }),
+          { status: 429 }
+        );
+      }
+      if (u.includes('ir.railcore.tech/v1/stations/OGL/live')) {
+        return new Response(JSON.stringify({
+          success: true,
+          meta: { timestamp: '2026-11-26T04:00:00+05:30' },
+          data: {
+            station_code: 'OGL',
+            trains: [
+              {
+                train_number: '12760',
+                train_name: 'Charminar SF Express',
+                source_station_code: 'HYB',
+                destination_station_code: 'TBM',
+                train_type: 'SUPERFAST',
+                estimated_departure: '2026-11-26T03:50:00+05:30',
+                actual_departure: '2026-11-26T03:52:00+05:30',
+                departure_delay_minutes: 31,
+                timing_basis: 'live',
+                status: 'DEPARTED',
+              },
+              {
+                train_number: '99999',
+                train_name: 'Cancelled Special',
+                source_station_code: 'BZA',
+                destination_station_code: 'GDR',
+                status: 'CANCELLED',
+              },
+            ],
+          },
+        }), { status: 200 });
+      }
+      if (u.includes('ir.railcore.tech/v1/stations/NLR/live')) {
+        return new Response(JSON.stringify({
+          success: true,
+          meta: { timestamp: '2026-11-26T04:00:00+05:30' },
+          data: {
+            station_code: 'NLR',
+            trains: [{
+              train_number: '12760',
+              train_name: 'Charminar SF Express',
+              source_station_code: 'HYB',
+              destination_station_code: 'TBM',
+              estimated_arrival: '2026-11-26T05:10:00+05:30',
+              arrival_delay_minutes: 31,
+              timing_basis: 'live',
+              status: 'RUNNING',
+            }],
+          },
+        }), { status: 200 });
+      }
+      if (u.includes('ir.railcore.tech/v1/trains/12760/live')) {
+        return new Response(JSON.stringify({
+          success: true,
+          data: {
+            train_number: '12760',
+            train_name: 'Charminar SF Express',
+            status: 'RUNNING',
+            delay_minutes: 31,
+            current_station_code: 'SKM',
+            stations: [
+              { station_code: 'OGL', status: 'departed', actual_departure: '2026-11-26T03:52:00+05:30' },
+              { station_code: 'SKM', status: 'at-station', delay_arrival_minutes: 31 },
+              { station_code: 'NLR', status: 'upcoming', eta: '2026-11-26T05:10:00+05:30' },
+            ],
+          },
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    };
+
+    const corrRes = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live'),
+      { RAILRADAR_API_KEY: 'rr-exhausted', RAILCORE_API_KEY: 'rc-valid' }
+    );
+    assert.equal(corrRes.status, 200);
+    assert.match(corrRes.headers.get('Cache-Control') || '', /no-cache.*s-maxage=300/);
+    const corrBody = await corrRes.json();
+    assert.equal(corrBody.ok, true);
+    assert.equal(corrBody.source, 'railcore-v1');
+    assert.equal(corrBody.trains.length, 1, 'Cancelled trains must be filtered out');
+    assert.equal(corrBody.trains[0].no, '12760');
+    assert.equal(corrBody.trains[0].dir, 'DN');
+    assert.equal(corrBody.trains[0].delayMin, 31);
+    assert.equal(corrBody.trains[0].boards.OGL.departedAt, '2026-11-26T03:52:00+05:30');
+    assert.ok(calls.some(c => c.url.includes('ir.railcore.tech/v1/stations/OGL/live?window_hours=6') && c.headers['X-RailCore-Key'] === 'rc-valid'));
+
+    const liveRes = await handleLiveStatus(
+      new Request('https://railraksha.tech/api/live-status?train=12760', {
+        headers: { 'X-RailCore-Key': 'rc-personal' },
+      }),
+      { RAILRADAR_API_KEY: 'rr-exhausted' }
+    );
+    assert.equal(liveRes.status, 200);
+    const liveBody = await liveRes.json();
+    assert.equal(liveBody.provider, 'railcore-v1');
+    assert.equal(liveBody.dir, 'DN');
+    assert.equal(liveBody.delay_min, 31);
+    assert.equal(liveBody.last_station_code, 'SKM');
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.caches = origCaches;
+  }
+});
+
+test('v8.2 buildLiveCorridorState: uses departedAt + 2-station linear bracketing and filters object hubs cleanly', () => {
+  const norm = normalizeRailCorePayload({
+    data: {
+      train_number: '13352',
+      train_name: 'Dhanbad Express',
+      status: 'RUNNING',
+      delay_minutes: 102,
+      current_station_code: 'SKM',
+      stations: [
+        { station_code: 'NLR', status: 'departed' },
+        { station_code: 'SKM', status: 'departed', actual_departure: '2026-11-26T03:42:00+05:30' },
+        { station_code: 'OGL', status: 'upcoming', eta: '2026-11-26T04:14:00+05:30' },
+      ],
+    },
+  });
+  assert.equal(norm.dir, 'UP');
+  assert.equal(norm.delay_min, 102);
+
+  // Midpoint between SKM departedAt (03:42, km 293) and OGL expectedArrival (04:14, km 321) at 03:58 = km 307
+  const refNowMs = Date.parse('2026-11-26T03:58:00+05:30');
+  const st = buildLiveCorridorState({
+    no: '13352',
+    name: 'Dhanbad Express',
+    dir: 'UP',
+    isLive: true,
+    delayMin: 102,
+    boards: {
+      SKM: {
+        type: 'departed',
+        departedAt: '2026-11-26T03:42:00+05:30',
+        expectedDeparture: '2026-11-26T03:31:00+05:30',
+        delayMinutes: 102,
+      },
+      OGL: {
+        type: 'upcoming',
+        expectedArrival: '2026-11-26T04:14:00+05:30',
+        delayMinutes: 102,
+      },
+    },
+    detail: null,
+  }, refNowMs);
+
+  assert.ok(st, 'Expected live state');
+  assert.ok(Math.abs(st.kmNominal - 307) < 0.2, `Expected ~307 km midpoint between SKM(293) and OGL(321), got ${st.kmNominal}`);
+  assert.equal(st.delayMin, 102);
+  assert.equal(st.confirmed, true);
+});

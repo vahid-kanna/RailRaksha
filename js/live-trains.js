@@ -195,24 +195,54 @@ export function buildLiveCorridorState(entry, refNowMs) {
       phase = 'RUNNING';
     }
   } else {
-    const anchors = ['SKM', 'OGL', 'NLR'];
-    let bestAbsDtH = Infinity;
-    for (const code of anchors) {
+    // Anchor positions from corridor station boards (SKM / OGL / NLR), preferring 2-station bracketing interpolation
+    const pts = [];
+    for (const code of ['NLR', 'SKM', 'OGL']) {
       const b = entry.boards?.[code];
       if (!b) continue;
-      const tMs = Date.parse(b.expectedArrival || b.expectedDeparture || '');
-      if (!Number.isFinite(tMs)) continue;
+      const rawTime = b.type === 'departed' && b.departedAt
+        ? b.departedAt
+        : (b.expectedArrival || b.expectedDeparture || '');
+      const tMs = Date.parse(rawTime);
       const st = STATION_BY_CODE[code];
-      if (!st) continue;
-      const dtH = (tMs - refNowMs) / 3600000;
-      const absDtH = Math.abs(dtH);
-      if (absDtH > 2.5 || absDtH >= bestAbsDtH) continue;
-      bestAbsDtH = absDtH;
-      lastStation = code;
-      kmNominal = st.km - sign * (nomSpeed * dtH);
-      kmLead = kmNominal + sign * 2.0;
-      kmLag = kmNominal - sign * 2.0;
-      phase = b.type === 'at-station' ? 'HALTED' : 'RUNNING';
+      if (!Number.isFinite(tMs) || !st) continue;
+      pts.push({ code, km: st.km, tMs, type: b.type });
+    }
+    pts.sort((a, b) => a.tMs - b.tMs);
+
+    let bracketed = false;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      if (a.tMs <= refNowMs && refNowMs <= b.tMs && b.tMs > a.tMs && (b.tMs - a.tMs) <= 4 * 3600000) {
+        const frac = (refNowMs - a.tMs) / (b.tMs - a.tMs);
+        kmNominal = a.km + (b.km - a.km) * frac;
+        const spanKm = Math.abs(b.km - a.km);
+        const spanH = (b.tMs - a.tMs) / 3600000;
+        const segSpeed = spanH > 0.05 ? spanKm / spanH : nomSpeed;
+        if (Number.isFinite(segSpeed) && segSpeed >= 25 && segSpeed <= 160) speedKmh = segSpeed;
+        lastStation = a.code;
+        kmLead = kmNominal + sign * 1.5;
+        kmLag = kmNominal - sign * 1.5;
+        phase = 'RUNNING';
+        bracketed = true;
+        break;
+      }
+    }
+
+    if (!bracketed) {
+      let bestAbsDtH = Infinity;
+      for (const pt of pts) {
+        const dtH = (pt.tMs - refNowMs) / 3600000;
+        const absDtH = Math.abs(dtH);
+        if (absDtH > 2.5 || absDtH >= bestAbsDtH) continue;
+        bestAbsDtH = absDtH;
+        lastStation = pt.code;
+        kmNominal = pt.km - sign * (nomSpeed * dtH);
+        kmLead = kmNominal + sign * 2.0;
+        kmLag = kmNominal - sign * 2.0;
+        phase = pt.type === 'at-station' ? 'HALTED' : 'RUNNING';
+      }
     }
   }
 

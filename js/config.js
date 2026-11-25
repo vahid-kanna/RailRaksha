@@ -20,8 +20,9 @@ export const DEFAULT_CONFIG = {
   ai_base_url:  'https://generativelanguage.googleapis.com/v1beta/openai',
   ai_api_key:   '',
 
-  // Live Train Tracking (optional personal override; blank = Cloudflare /api/corridor-live proxy)
+  // Live Train Tracking (optional personal overrides; blank = Cloudflare Edge secrets)
   railradar_key: '',
+  railcore_key:  '',
 
   // Weather (Open-Meteo works free with zero key; optional OWM override)
   owm_api_key:  '',

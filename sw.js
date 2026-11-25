@@ -1,10 +1,10 @@
-const CACHE_NAME = 'railraksha-v8.1';
+const CACHE_NAME = 'railraksha-v8.2';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/css/style.css?v=8.1',
-  '/js/app.js?v=8.1',
+  '/css/style.css?v=8.2',
+  '/js/app.js?v=8.2',
   '/js/config.js',
   '/js/db.js',
   '/js/ai-engine.js',

@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=JetBrains+Mono:wght@500;600&family=Karla:wght@400;500;700&family=Noto+Sans+Telugu:wght@500;600;700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/style.css?v=8.1" />
+  <link rel="stylesheet" href="/css/style.css?v=8.2" />
 </head>
 <body data-level="NONE" data-armed="false" data-track="BOTH">
   <div id="app" class="app-shell">
@@ -825,6 +825,13 @@
               </div>
             </div>
             <div class="field-group">
+              <label for="setting-railcore_key">Personal RailCore Key (Optional 500/mo free)</label>
+              <div class="pw-row">
+                <input id="setting-railcore_key" type="password" class="hw-input" placeholder="Leave blank for RailRadar / Edge default" />
+                <button type="button" class="pill-mini btn-toggle-visibility" data-target="setting-railcore_key">Show</button>
+              </div>
+            </div>
+            <div class="field-group">
               <label for="setting-owm_api_key">OpenWeatherMap Key (Optional)</label>
               <div class="pw-row">
                 <input id="setting-owm_api_key" type="password" class="hw-input" placeholder="Leave blank for keyless Open-Meteo" />
@@ -844,7 +851,7 @@
             </button>
           </div>
 
-          <p class="attribution-note">RailRaksha v8.1 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
+          <p class="attribution-note">RailRaksha v8.2 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
         </div>
       </div>
     </div>
@@ -865,6 +872,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/app.js?v=8.1"></script>
+  <script type="module" src="/js/app.js?v=8.2"></script>
 </body>
 </html>

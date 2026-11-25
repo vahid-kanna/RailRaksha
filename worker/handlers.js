@@ -1,5 +1,5 @@
 /**
- * RailRaksha — Cloudflare Edge API Handlers v8.1 (worker/handlers.js)
+ * RailRaksha — Cloudflare Edge API Handlers v8.2 (worker/handlers.js)
  *
  * Pure Web-Standard Request/Response handlers shared by Cloudflare Workers
  * (worker/index.js) and Cloudflare Pages Functions (functions/api/*).
@@ -7,14 +7,14 @@
  * Endpoints:
  *   GET  /api/health         -> Service & secret availability diagnostics
  *   POST /api/chat           -> Multi-provider AI proxy with automatic Gemini 3 model failover
- *   GET  /api/corridor-live  -> Live-data-first BZA<->GDR corridor train telemetry (OGL/NLR boards, quota-safe)
- *   GET  /api/live-status    -> Single-train live status (RailRadar v1)
+ *   GET  /api/corridor-live  -> Live-data-first BZA<->GDR corridor telemetry (RailRadar v1 + RailCore v1 failover, quota-safe)
+ *   GET  /api/live-status    -> Single-train live status (RailRadar v1 + RailCore v1 failover)
  */
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-RailRadar-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-RailRadar-Key, X-RailCore-Key',
 };
 
 // Corridor station chainage lookup (km from GDR=162 to BZA=445, matched to js/corridor.js)
@@ -103,7 +103,7 @@ export function resolveAIProvider(env = {}) {
 export function inferCorridorDirection(route = [], prevCode = '', nextCode = '') {
   const seen = [];
   for (const st of route) {
-    const code = String(st.stationCode || st.code || '').toUpperCase();
+    const code = String(st.stationCode || st.station_code || st.code || '').toUpperCase();
     if (CORRIDOR_KM[code] != null) seen.push(CORRIDOR_KM[code]);
   }
   if (seen.length >= 2) {
@@ -210,6 +210,92 @@ export function normalizeRailRadarPayload(raw) {
   };
 }
 
+function stationCodeOf(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val.trim().toUpperCase();
+  if (typeof val === 'object') {
+    return String(val.code || val.stationCode || val.station_code || '').trim().toUpperCase();
+  }
+  return '';
+}
+
+function getISTDateToday() {
+  return new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+}
+
+/**
+ * Normalize RailCore v1 `/v1/trains/{no}/live` response into RailRaksha telemetry shape.
+ */
+export function normalizeRailCorePayload(raw) {
+  const d = raw?.data || raw;
+  if (!d || typeof d !== 'object') return null;
+
+  const route = Array.isArray(d.stations) ? d.stations
+    : Array.isArray(d.route) ? d.route
+    : [];
+
+  let lastPassed = null;
+  for (const st of route) {
+    const stStatus = String(st.status || '').toLowerCase();
+    if (stStatus === 'departed' || stStatus === 'at-station' || st.actual_departure || st.actual_arrival) {
+      lastPassed = st;
+    }
+  }
+
+  const code = String(
+    d.current_station_code || d.currentStationCode || lastPassed?.station_code || lastPassed?.stationCode || ''
+  ).trim().toUpperCase();
+  if (!code) return null;
+
+  const curStop = route.find(s => stationCodeOf(s) === code) || lastPassed || {};
+  const delayMin = Number(
+    d.delay_minutes ?? d.delayMinutes ?? curStop.delay_departure_minutes ?? curStop.delay_arrival_minutes ?? 0
+  );
+  const statusStr = String(d.status || curStop.status || '').toLowerCase();
+  const event = (statusStr.includes('at_station') || statusStr === 'at-station' || statusStr === 'halted' || statusStr === 'arrived')
+    ? 'ARRIVED'
+    : 'DEPARTED';
+
+  const actualDep = curStop.actual_departure || curStop.actual_arrival || curStop.eta || null;
+  const dir = inferCorridorDirection(route, code, d.next_station_code);
+
+  const corridorStops = route
+    .filter(s => CORRIDOR_KM[stationCodeOf(s)] != null)
+    .map(s => {
+      const c = stationCodeOf(s);
+      return {
+        code: c,
+        km: CORRIDOR_KM[c],
+        status: String(s.status || 'upcoming').toLowerCase(),
+        schDep: s.scheduled_departure || s.scheduled_arrival || null,
+        actDep: s.actual_departure || s.actual_arrival || s.eta || null,
+        delay: Number(s.delay_departure_minutes ?? s.delay_arrival_minutes ?? delayMin) || 0,
+        speedKmh: null,
+      };
+    });
+
+  return {
+    train_no: String(d.train_number || d.trainNumber || '').trim(),
+    train_name: String(d.train_name || d.trainName || '').trim(),
+    train_type: String(d.train_type || 'Express'),
+    dir,
+    status: statusStr || 'running',
+    is_live: statusStr !== 'cancelled' && statusStr !== 'scheduled',
+    last_station_code: code,
+    last_station_name: String(curStop.station_name || curStop.stationName || code),
+    next_halt_code: d.next_station_code ? String(d.next_station_code).toUpperCase() : null,
+    next_halt_name: d.next_station_name || null,
+    distance_from_last_km: 0,
+    event,
+    delay_min: Number.isFinite(delayMin) ? Math.round(delayMin) : 0,
+    actual_departure: actualDep,
+    speed_kmh: null,
+    vmax_kmh: 110,
+    updated_at: raw?.meta?.timestamp || new Date().toISOString(),
+    corridor_stops: corridorStops,
+  };
+}
+
 /**
  * Resolve RailRadar API key: optional client `X-RailRadar-Key` header overrides
  * the Cloudflare Worker secret (`RAILRADAR_API_KEY` / `RAILRADAR_KEY`).
@@ -218,6 +304,16 @@ function resolveRailRadarKey(request, env = {}) {
   const headerKey = request?.headers?.get?.('X-RailRadar-Key')?.trim();
   if (headerKey) return headerKey;
   return env.RAILRADAR_API_KEY || env.RAILRADAR_KEY || '';
+}
+
+/**
+ * Resolve RailCore API key: optional client `X-RailCore-Key` header overrides
+ * the Cloudflare Worker secret (`RAILCORE_API_KEY` / `RAILCORE_KEY`).
+ */
+function resolveRailCoreKey(request, env = {}) {
+  const headerKey = request?.headers?.get?.('X-RailCore-Key')?.trim();
+  if (headerKey) return headerKey;
+  return env.RAILCORE_API_KEY || env.RAILCORE_KEY || '';
 }
 
 async function shortKeyTag(str) {
@@ -237,11 +333,19 @@ export async function handleHealth(request, env = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   const ai = resolveAIProvider(env);
   const hasRailRadar = Boolean(env.RAILRADAR_API_KEY || env.RAILRADAR_KEY);
-  const hasRailCore = Boolean(env.RAILCORE_API_KEY);
+  const hasRailCore = Boolean(env.RAILCORE_API_KEY || env.RAILCORE_KEY);
+
+  const liveProvider = hasRailRadar && hasRailCore
+    ? 'railradar+railcore'
+    : hasRailRadar
+    ? 'railradar-v1-corridor-live'
+    : hasRailCore
+    ? 'railcore-v1-corridor-live'
+    : 'schedule-offline';
 
   return jsonResponse({
     status: 'ok',
-    version: '8.1',
+    version: '8.2',
     host: 'cloudflare',
     timestamp: new Date().toISOString(),
     services: {
@@ -252,10 +356,9 @@ export async function handleHealth(request, env = {}) {
       },
       liveTrains: {
         configured: hasRailRadar || hasRailCore,
-        provider: hasRailRadar
-          ? 'railradar-v1-corridor-live'
-          : (hasRailCore ? 'railcore-hook' : 'schedule-offline'),
-        ...(hasRailCore ? { railcoreConfigured: true } : {}),
+        provider: liveProvider,
+        railradarConfigured: hasRailRadar,
+        railcoreConfigured: hasRailCore,
       },
       weather: {
         configured: true,
@@ -378,6 +481,50 @@ export async function handleChat(request, env = {}) {
   });
 }
 
+async function fetchSingleTrainLive(train, date, provider, key) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 9000);
+  try {
+    let url;
+    let headers;
+    if (provider === 'railcore') {
+      const effectiveDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getISTDateToday();
+      url = `https://ir.railcore.tech/v1/trains/${train}/live?date=${encodeURIComponent(effectiveDate)}`;
+      headers = { 'X-RailCore-Key': key, 'Accept': 'application/json' };
+    } else {
+      const qs = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `?date=${encodeURIComponent(date)}` : '';
+      url = `https://api.railradar.in/v1/trains/${train}/live${qs}`;
+      headers = { 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' };
+    }
+
+    const response = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      return { ok: false, status: response.status, error: `Upstream ${provider} error ${response.status}` };
+    }
+    const raw = await response.json();
+    if (raw?.success === false) {
+      return { ok: false, status: 429, error: raw?.error?.message || `${provider} returned failure` };
+    }
+    const normalized = provider === 'railcore'
+      ? normalizeRailCorePayload(raw)
+      : normalizeRailRadarPayload(raw);
+    if (!normalized) {
+      return { ok: false, status: 422, error: 'Train not currently reporting live location' };
+    }
+    normalized.provider = `${provider}-v1`;
+    return { ok: true, data: normalized };
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      ok: false,
+      status: 504,
+      error: err?.name === 'AbortError' ? 'Live status upstream timeout' : 'Live status upstream error',
+    };
+  }
+}
+
 /**
  * GET /api/live-status?train=12711&date=YYYY-MM-DD
  */
@@ -395,44 +542,42 @@ export async function handleLiveStatus(request, env = {}) {
     return jsonResponse({ error: 'Valid 4 or 5 digit train number required' }, 400);
   }
 
-  const apiKey = resolveRailRadarKey(request, env);
-  if (!apiKey) {
+  const headerRR = request.headers.get('X-RailRadar-Key')?.trim() || '';
+  const headerRC = request.headers.get('X-RailCore-Key')?.trim() || '';
+  const rrKey = resolveRailRadarKey(request, env);
+  const rcKey = resolveRailCoreKey(request, env);
+
+  if (!rrKey && !rcKey) {
     return jsonResponse({ error: 'Live train feed key not configured on server' }, 501);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 9000);
+  const attempts = headerRC && !headerRR
+    ? [
+        ...(rcKey ? [['railcore', rcKey]] : []),
+        ...(rrKey ? [['railradar', rrKey]] : []),
+      ]
+    : [
+        ...(rrKey ? [['railradar', rrKey]] : []),
+        ...(rcKey ? [['railcore', rcKey]] : []),
+      ];
 
-  try {
-    const qs = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `?date=${encodeURIComponent(date)}` : '';
-    const response = await fetch(`https://api.railradar.in/v1/trains/${train}/live${qs}`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-
-    if (!response.ok) {
-      return jsonResponse({ error: `Upstream RailRadar error ${response.status}` }, response.status);
+  let lastErr = { status: 502, error: 'Unable to fetch live train status' };
+  for (const [provider, key] of attempts) {
+    const res = await fetchSingleTrainLive(train, date, provider, key);
+    if (res.ok) {
+      return jsonResponse(res.data, 200, {
+        'Cache-Control': 'no-cache, s-maxage=25, must-revalidate',
+        'CDN-Cache-Control': 'public, max-age=25',
+        'Vary': 'X-RailRadar-Key, X-RailCore-Key',
+      });
     }
-
-    const raw = await response.json();
-    const normalized = normalizeRailRadarPayload(raw);
-    if (!normalized) {
-      return jsonResponse({ error: 'Train not currently reporting live location' }, 422);
-    }
-
-    return jsonResponse(normalized, 200, {
-      'Cache-Control': 'public, max-age=25, s-maxage=25',
-    });
-  } catch (err) {
-    clearTimeout(timer);
-    return jsonResponse({
-      error: err?.name === 'AbortError' ? 'Live status upstream timeout' : 'Live status upstream error',
-    }, 504);
+    lastErr = res;
+    if (res.status === 422 && attempts.length === 1) break;
   }
+
+  return jsonResponse({ error: lastErr.error }, lastErr.status || 502, {
+    'Cache-Control': 'no-store',
+  });
 }
 
 /**
@@ -478,67 +623,80 @@ export function inferDirectionFromEndpoints(source, destination) {
  *   - Cached 300s at Cloudflare Edge (`caches.default`) + 1-hour stale fallback copy (`staleCacheKey`)
  *   - Returns HTTP 200 `{ ok: false, quotaExceeded, stale, source: 'schedule-fallback', trains }` on 429/unreachable
  */
-export async function handleCorridorLive(request, env = {}) {
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
-  if (request.method !== 'GET') return jsonResponse({ error: 'Method not allowed' }, 405);
+function normalizeBoardItem(provider, item) {
+  if (provider === 'railcore') {
+    const no = String(item?.train_number || item?.trainNumber || '').trim();
+    if (!/^\d{4,5}$/.test(no)) return null;
+    const rawStatus = String(item?.status || '').toUpperCase();
+    if (rawStatus === 'CANCELLED') return null;
 
-  const headerKey = request.headers.get('X-RailRadar-Key')?.trim() || '';
-  const apiKey = resolveRailRadarKey(request, env);
+    const basis = String(item?.timing_basis || '').toLowerCase();
+    let liveType = 'scheduled';
+    if (rawStatus.includes('AT_STATION') || rawStatus === 'ARRIVED') liveType = 'at-station';
+    else if (rawStatus === 'DEPARTED') liveType = 'departed';
+    else if (rawStatus === 'NOT_STARTED') liveType = 'not-started';
+    else if (basis === 'live' || rawStatus === 'RUNNING' || rawStatus === 'UPCOMING') liveType = 'upcoming';
 
-  // Optional RailCore provider hook/placeholder when RailRadar key is absent
-  if (!apiKey && env.RAILCORE_API_KEY) {
-    return jsonResponse({
-      ok: false,
-      quotaExceeded: false,
-      stale: false,
-      source: 'schedule-fallback',
-      updatedAt: new Date().toISOString(),
-      anchors: [],
-      totalDiscovered: 0,
-      liveEnriched: 0,
-      trains: [],
-      provider: 'railcore-hook',
-      error: 'RailCore provider hook reserved; schedule fallback active.',
-    }, 200, { 'Cache-Control': 'public, max-age=60, s-maxage=60' });
+    const delayRaw = item?.departure_delay_minutes ?? item?.arrival_delay_minutes ?? item?.delay_minutes ?? null;
+    const delayMinutes = delayRaw != null && Number.isFinite(Number(delayRaw)) ? Number(delayRaw) : null;
+
+    return {
+      no,
+      name: item?.train_name || item?.extended_train_name || `Train ${no}`,
+      type: item?.train_type || 'Express',
+      source: stationCodeOf(item?.source_station_code || item?.source),
+      destination: stationCodeOf(item?.destination_station_code || item?.destination),
+      liveType,
+      delayMinutes,
+      board: {
+        type: liveType,
+        expectedArrival: item?.estimated_arrival || item?.scheduled_arrival || item?.eta || null,
+        expectedDeparture: item?.estimated_departure || item?.scheduled_departure || null,
+        departedAt: item?.actual_departure || null,
+        delayMinutes,
+        platform: item?.platform_number || null,
+      },
+    };
   }
 
-  if (!apiKey) {
-    return jsonResponse({ error: 'RAILRADAR_API_KEY not configured' }, 501);
-  }
+  const no = String(item?.train?.number || '').trim();
+  if (!/^\d{4,5}$/.test(no)) return null;
+  const liveType = String(item?.live?.type || 'scheduled').toLowerCase();
+  if (liveType === 'cancelled') return null;
+  const delayRaw = item?.live?.delayMinutes;
+  const delayMinutes = delayRaw != null && Number.isFinite(Number(delayRaw)) ? Number(delayRaw) : null;
 
-  const url = new URL(request.url);
-  const bypassCache = url.searchParams.get('fresh') === '1';
-  const scope = (url.searchParams.get('scope') || '').toLowerCase();
-  const wantEnrich = url.searchParams.get('enrich') === '1';
-
-  const cache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
-  const keyTag = headerKey ? await shortKeyTag(headerKey) : '';
-  const useCache = Boolean(cache && (!headerKey || keyTag));
-
-  const qsParts = [];
-  if (scope === 'skm') qsParts.push('scope=skm');
-  if (keyTag) qsParts.push(`k=${keyTag}`);
-  const cacheQs = qsParts.length ? `?${qsParts.join('&')}` : '';
-
-  const cacheKey = new Request(`${url.origin}/api/corridor-live${cacheQs}`, { method: 'GET' });
-  const staleCacheKey = new Request(`${url.origin}/api/corridor-live/__stale${cacheQs}`, { method: 'GET' });
-
-  if (useCache && !bypassCache && !wantEnrich) {
-    const cached = await cache.match(cacheKey);
-    if (cached) return cached;
-  }
-
-  const authHeaders = {
-    'Authorization': `Bearer ${apiKey}`,
-    'Accept': 'application/json',
+  return {
+    no,
+    name: item?.train?.name || `Train ${no}`,
+    type: item?.train?.type || 'Express',
+    source: stationCodeOf(item?.train?.source),
+    destination: stationCodeOf(item?.train?.destination),
+    liveType,
+    delayMinutes,
+    board: {
+      type: liveType,
+      expectedArrival: item?.live?.expectedArrivalTime || null,
+      expectedDeparture: item?.live?.expectedDepartureTime || null,
+      departedAt: item?.live?.departedAt || null,
+      delayMinutes,
+      platform: item?.stop?.platform || null,
+    },
   };
+}
 
-  // Query ONLY OGL + NLR by default (2 upstream calls), or SKM if ?scope=skm (1 upstream call)
-  const anchors = scope === 'skm' ? ['SKM'] : ['OGL', 'NLR'];
+async function fetchCorridorBoards(provider, key, anchors) {
+  const headers = provider === 'railcore'
+    ? { 'X-RailCore-Key': key, 'Accept': 'application/json' }
+    : { 'Authorization': `Bearer ${key}`, 'Accept': 'application/json' };
+
   const boardResults = await Promise.allSettled(
     anchors.map(async (stn) => {
-      const resp = await fetch(`https://api.railradar.in/v1/stations/${stn}/live?hours=2`, {
-        headers: authHeaders,
+      const url = provider === 'railcore'
+        ? `https://ir.railcore.tech/v1/stations/${stn}/live?window_hours=6`
+        : `https://api.railradar.in/v1/stations/${stn}/live?hours=6&includeIntermediate=true`;
+      const resp = await fetch(url, {
+        headers,
         signal: AbortSignal.timeout(8000),
       });
       if (!resp.ok) {
@@ -558,7 +716,7 @@ export async function handleCorridorLive(request, env = {}) {
       const json = await resp.json();
       if (json?.success === false) {
         const errCode = String(json?.error?.code || json?.code || '').toLowerCase();
-        const msg = json?.error?.message || json?.message || 'RailRadar live board error';
+        const msg = json?.error?.message || json?.message || `${provider} live board error`;
         const err = new Error(`${stn}: ${msg}`);
         err.status = 429;
         err.isQuota = errCode.includes('quota') || errCode.includes('rate') || errCode.includes('limit');
@@ -586,43 +744,112 @@ export async function handleCorridorLive(request, env = {}) {
     boardsOk.push(res.value.stn);
     if (res.value.meta?.timestamp) serverNowISO = res.value.meta.timestamp;
 
-    for (const item of res.value.trains) {
-      const no = String(item?.train?.number || '').trim();
-      if (!/^\d{4,5}$/.test(no)) continue;
-      const liveType = item?.live?.type || 'scheduled';
-      const existing = byTrain.get(no) || {
-        no,
-        name: item?.train?.name || `Train ${no}`,
-        type: item?.train?.type || 'Express',
-        source: item?.train?.source || '',
-        destination: item?.train?.destination || '',
+    for (const rawItem of res.value.trains) {
+      const norm = normalizeBoardItem(provider, rawItem);
+      if (!norm) continue;
+      const existing = byTrain.get(norm.no) || {
+        no: norm.no,
+        name: norm.name,
+        type: norm.type,
+        source: norm.source,
+        destination: norm.destination,
         boards: {},
         liveType: 'scheduled',
         delayMin: null,
         priority: 0,
       };
-      existing.boards[res.value.stn] = {
-        type: liveType,
-        expectedArrival: item?.live?.expectedArrivalTime || null,
-        expectedDeparture: item?.live?.expectedDepartureTime || null,
-        delayMinutes: item?.live?.delayMinutes ?? null,
-        platform: item?.stop?.platform || null,
-      };
-      const prio = liveType === 'at-station' ? 4
-        : (liveType === 'upcoming' || liveType === 'departed') ? 3
-        : (item?.live?.delayMinutes != null ? 2 : 1);
+      existing.boards[res.value.stn] = norm.board;
+      const prio = norm.liveType === 'at-station' ? 4
+        : (norm.liveType === 'upcoming' || norm.liveType === 'departed') ? 3
+        : (norm.delayMinutes != null ? 2 : 1);
       if (prio > existing.priority) {
         existing.priority = prio;
-        existing.liveType = liveType;
+        existing.liveType = norm.liveType;
       }
-      if (item?.live?.delayMinutes != null) {
-        existing.delayMin = Number(item.live.delayMinutes);
+      if (norm.delayMinutes != null) {
+        existing.delayMin = norm.delayMinutes;
       }
-      byTrain.set(no, existing);
+      byTrain.set(norm.no, existing);
     }
   }
 
-  if (boardsOk.length === 0) {
+  return { provider, key, byTrain, boardsOk, any429, firstErrMsg, serverNowISO };
+}
+
+/**
+ * GET /api/corridor-live
+ *   - Discovers live corridor trains with 1–2 station board calls (RailRadar v1 + RailCore v1 failover).
+ *   - Routine polls perform 0 per-train detail calls unless `?enrich=1` is passed.
+ *   - Returns HTTP 200 `{ ok:false, quotaExceeded, stale }` on upstream 429 so clients stay silent.
+ */
+export async function handleCorridorLive(request, env = {}) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (request.method !== 'GET') return jsonResponse({ error: 'Method not allowed' }, 405);
+
+  const headerRR = request.headers.get('X-RailRadar-Key')?.trim() || '';
+  const headerRC = request.headers.get('X-RailCore-Key')?.trim() || '';
+  const rrKey = resolveRailRadarKey(request, env);
+  const rcKey = resolveRailCoreKey(request, env);
+
+  if (!rrKey && !rcKey) {
+    return jsonResponse({ error: 'RAILRADAR_API_KEY not configured' }, 501);
+  }
+
+  const url = new URL(request.url);
+  const bypassCache = url.searchParams.get('fresh') === '1';
+  const scope = (url.searchParams.get('scope') || '').toLowerCase();
+  const wantEnrich = url.searchParams.get('enrich') === '1';
+
+  const cache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
+  const headerComposite = headerRR || headerRC ? `${headerRR}|${headerRC}` : '';
+  const keyTag = headerComposite ? await shortKeyTag(headerComposite) : '';
+  const useCache = Boolean(cache && (!headerComposite || keyTag));
+
+  const qsParts = [];
+  if (scope === 'skm') qsParts.push('scope=skm');
+  if (keyTag) qsParts.push(`k=${keyTag}`);
+  const cacheQs = qsParts.length ? `?${qsParts.join('&')}` : '';
+
+  const cacheKey = new Request(`${url.origin}/api/corridor-live${cacheQs}`, { method: 'GET' });
+  const staleCacheKey = new Request(`${url.origin}/api/corridor-live/__stale${cacheQs}`, { method: 'GET' });
+
+  if (useCache && !bypassCache && !wantEnrich) {
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const headers = new Headers(cached.headers);
+      headers.set('Cache-Control', 'no-cache, s-maxage=300, must-revalidate');
+      headers.set('CDN-Cache-Control', 'public, max-age=300');
+      headers.set('Vary', 'X-RailRadar-Key, X-RailCore-Key');
+      return new Response(cached.body, { status: cached.status, headers });
+    }
+  }
+
+  const anchors = scope === 'skm' ? ['SKM'] : ['OGL', 'NLR'];
+  const providerOrder = headerRC && !headerRR
+    ? [
+        ...(rcKey ? [['railcore', rcKey]] : []),
+        ...(rrKey ? [['railradar', rrKey]] : []),
+      ]
+    : [
+        ...(rrKey ? [['railradar', rrKey]] : []),
+        ...(rcKey ? [['railcore', rcKey]] : []),
+      ];
+
+  let winning = null;
+  let any429 = false;
+  let firstErrMsg = '';
+
+  for (const [provider, key] of providerOrder) {
+    const attempt = await fetchCorridorBoards(provider, key, anchors);
+    if (attempt.any429) any429 = true;
+    if (!firstErrMsg && attempt.firstErrMsg) firstErrMsg = attempt.firstErrMsg;
+    if (attempt.boardsOk.length > 0) {
+      winning = attempt;
+      break;
+    }
+  }
+
+  if (!winning) {
     let staleData = null;
     if (useCache) {
       const staleCandidates = [staleCacheKey];
@@ -656,17 +883,24 @@ export async function handleCorridorLive(request, env = {}) {
       trains: staleData?.trains || [],
       error: any429
         ? 'RailRadar quota exceeded (429) — schedule fallback active'
-        : (firstErrMsg || 'Unable to reach RailRadar live station boards'),
+        : (firstErrMsg || 'Unable to reach live station boards'),
     };
 
     const fallbackResp = jsonResponse(fallbackBody, 200, {
-      'Cache-Control': any429 ? 'public, max-age=180, s-maxage=180' : 'no-store',
+      'Cache-Control': any429 ? 'no-cache, s-maxage=180, must-revalidate' : 'no-store',
+      'CDN-Cache-Control': any429 ? 'public, max-age=180' : 'no-store',
+      'Vary': 'X-RailRadar-Key, X-RailCore-Key',
     });
     if (useCache && any429) {
-      try { await cache.put(cacheKey, fallbackResp.clone()); } catch {}
+      try {
+        const edgeCopy = jsonResponse(fallbackBody, 200, { 'Cache-Control': 'public, max-age=180, s-maxage=180' });
+        await cache.put(cacheKey, edgeCopy);
+      } catch {}
     }
     return fallbackResp;
   }
+
+  const { provider: providerUsed, key: activeKey, byTrain, boardsOk, serverNowISO } = winning;
 
   // Routine polls perform 0 extra detail calls; enrich at most 1 train only when ?enrich=1
   const liveMap = new Map();
@@ -682,12 +916,8 @@ export async function handleCorridorLive(request, env = {}) {
 
     const enriched = await Promise.allSettled(
       candidates.map(async (c) => {
-        const resp = await fetch(`https://api.railradar.in/v1/trains/${c.no}/live`, {
-          headers: authHeaders,
-          signal: AbortSignal.timeout(6500),
-        });
-        if (!resp.ok) return null;
-        return normalizeRailRadarPayload(await resp.json());
+        const res = await fetchSingleTrainLive(c.no, null, providerUsed, activeKey);
+        return res.ok ? res.data : null;
       })
     );
 
@@ -705,7 +935,11 @@ export async function handleCorridorLive(request, env = {}) {
     if (!dir) {
       const pts = [];
       for (const code of ['NLR', 'SKM', 'OGL']) {
-        const t = Date.parse(c.boards[code]?.expectedArrival || c.boards[code]?.expectedDeparture || '');
+        const b = c.boards[code];
+        const rawTime = b?.type === 'departed' && b?.departedAt
+          ? b.departedAt
+          : (b?.expectedArrival || b?.expectedDeparture || '');
+        const t = Date.parse(rawTime);
         if (Number.isFinite(t)) pts.push({ km: CORRIDOR_KM[code], t });
       }
       if (pts.length >= 2) {
@@ -737,7 +971,7 @@ export async function handleCorridorLive(request, env = {}) {
 
   const body = {
     ok: true,
-    source: 'railradar-v1',
+    source: `${providerUsed}-v1`,
     updatedAt: serverNowISO,
     anchors: boardsOk,
     totalDiscovered: trains.length,
@@ -746,12 +980,15 @@ export async function handleCorridorLive(request, env = {}) {
   };
 
   const resp = jsonResponse(body, 200, {
-    'Cache-Control': 'public, max-age=300, s-maxage=300',
+    'Cache-Control': 'no-cache, s-maxage=300, must-revalidate',
+    'CDN-Cache-Control': 'public, max-age=300',
+    'Vary': 'X-RailRadar-Key, X-RailCore-Key',
   });
 
   if (useCache) {
     try {
-      await cache.put(cacheKey, resp.clone());
+      const edgeCopy = jsonResponse(body, 200, { 'Cache-Control': 'public, max-age=300, s-maxage=300' });
+      await cache.put(cacheKey, edgeCopy);
       const staleResp = jsonResponse(body, 200, {
         'Cache-Control': 'public, max-age=3600, s-maxage=3600',
       });
