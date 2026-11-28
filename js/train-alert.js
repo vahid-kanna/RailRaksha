@@ -228,24 +228,38 @@ export class SirenManager {
     const id = setTimeout(() => { if (this.level === expectLevel) fn(); }, ms);
     this.subTimers.push(id);
   }
-  _tone(freqA, freqB, durS, gain = 0.9) {
+  _tone(freqA, freqB, durS, gain = 0.85) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = 'square';
     o.frequency.setValueAtTime(freqA, t);
-    o.frequency.linearRampToValueAtTime(freqB, t + durS);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    if (freqB !== freqA) o.frequency.linearRampToValueAtTime(freqB, t + durS);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+    g.gain.setValueAtTime(gain, t + Math.max(0.02, durS - 0.02));
     g.gain.exponentialRampToValueAtTime(0.0001, t + durS);
-    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + durS + 0.05);
+    if (typeof this.ctx.createBiquadFilter === 'function') {
+      const flt = this.ctx.createBiquadFilter();
+      flt.type = 'lowpass';
+      flt.frequency.setValueAtTime(2200, t);
+      o.connect(flt).connect(g).connect(this.ctx.destination);
+    } else {
+      o.connect(g).connect(this.ctx.destination);
+    }
+    o.start(t);
+    o.stop(t + durS + 0.05);
+  }
+  beepTest() {
+    this._tone(920, 920, 0.09, 0.45);
   }
   set(level, { muted = false } = {}) {
     const eff = muted ? Math.min(level, LEVEL.PREPARE) : level;
     if (eff === this.level) return;
     this.level = eff; this._clearTimers();
     const P = {
-      [LEVEL.PREPARE]:  { every: 0,    fn: () => { this._tone(880, 880, 0.18); this._later(300, eff, () => this._tone(880, 880, 0.18)); } },
-      [LEVEL.WARN]:     { every: 4000, fn: () => [0, 350, 700].forEach(d => this._later(d, eff, () => this._tone(1000, 1000, 0.22))) },
-      [LEVEL.CRITICAL]: { every: 1200, fn: () => { this._tone(700, 1400, 0.55); this._later(600, eff, () => this._tone(1400, 700, 0.55)); } },
+      [LEVEL.PREPARE]:  { every: 0,    fn: () => { this._tone(860, 860, 0.14, 0.6); this._later(240, eff, () => this._tone(860, 860, 0.14, 0.6)); } },
+      [LEVEL.WARN]:     { every: 3200, fn: () => [0, 260, 520].forEach(d => this._later(d, eff, () => this._tone(940, 940, 0.16, 0.78))) },
+      [LEVEL.CRITICAL]: { every: 560,  fn: () => { this._tone(1000, 1000, 0.24, 0.92); } },
     }[eff];
     if (!P) return;
     P.fn(); if (P.every) this.timer = setInterval(P.fn, P.every);
@@ -285,8 +299,8 @@ export class Notifier {
  * haptic pattern, one voice stream and one notification slot.
  */
 export class AlertOrchestrator {
-  constructor({ voice, siren, haptics, notifier, now = () => Date.now() }) {
-    Object.assign(this, { voice, siren, haptics, notifier, now });
+  constructor({ voice, siren, haptics, notifier, buzzerOnly = false, now = () => Date.now() }) {
+    Object.assign(this, { voice, siren, haptics, notifier, buzzerOnly, now });
     this.lastSpoken = new Map(); // `${key}:${level}` → ms
     this.primaryKey = null; this.primaryLevel = LEVEL.NONE;
     this.ack = null; // { key, level, until }
@@ -301,9 +315,11 @@ export class AlertOrchestrator {
     const now = this.now();
     const p = result.primary;
     // events first (one-shots)
-    for (const e of result.events) {
-      if (e.type === 'ADJACENT') this.voice.speak({ priority: LEVEL.PREPARE, ...buildMessage('ADJACENT', e.ts), key: `${e.ts.key}:ADJ` });
-      if (e.type === 'CLEARED' && (!p || p.level < LEVEL.WARN)) this.voice.speak({ priority: LEVEL.AMBIENT, ...buildMessage('CLEARED', e.ts), key: `${e.ts.key}:CLR` });
+    if (!this.buzzerOnly && this.voice) {
+      for (const e of result.events) {
+        if (e.type === 'ADJACENT') this.voice.speak({ priority: LEVEL.PREPARE, ...buildMessage('ADJACENT', e.ts), key: `${e.ts.key}:ADJ` });
+        if (e.type === 'CLEARED' && (!p || p.level < LEVEL.WARN)) this.voice.speak({ priority: LEVEL.AMBIENT, ...buildMessage('CLEARED', e.ts), key: `${e.ts.key}:CLR` });
+      }
     }
     if (!p) { this.siren.set(LEVEL.NONE); this.haptics.set(LEVEL.NONE); this.primaryKey = null; this.primaryLevel = LEVEL.NONE; return; }
 
@@ -315,6 +331,8 @@ export class AlertOrchestrator {
     this.siren.set(p.level, { muted: acked });
     this.haptics.set(acked ? Math.min(p.level, LEVEL.PREPARE) : p.level);
 
+    if (this.buzzerOnly) return;
+
     const k = `${p.key}:${p.level}`;
     const last = this.lastSpoken.get(k) ?? 0;
     const repeat = this.REPEAT_MS[p.level] ?? Infinity;
@@ -322,7 +340,7 @@ export class AlertOrchestrator {
     if (voiceAllowed && (escalated || now - last >= repeat)) {
       const extra = result.threats.filter(t => t.key !== p.key && t.level >= LEVEL.WARN).length;
       const msg = buildMessage(LEVEL_NAME[p.level], p, extra);
-      this.voice.speak({ priority: p.level, ...msg, key: k });
+      this.voice?.speak({ priority: p.level, ...msg, key: k });
       this.lastSpoken.set(k, now);
       if (escalated) this.notifier?.notify(p, msg);
     }

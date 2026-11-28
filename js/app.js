@@ -1,5 +1,5 @@
 /**
- * RailRaksha — Main Application Controller v8.3 (app.js)
+ * RailRaksha — Main Application Controller v8.5 (app.js)
  *
  * Live-Data-First Corridor Safety Instrument:
  *   - Primary Live Feed: Cloudflare Worker `/api/corridor-live` (irctc.dev / RailCore / RailRadar failover)
@@ -12,7 +12,7 @@ import { STATIONS, STATION_BY_CODE, kmToLatLon, nearestStation } from './corrido
 import { GpsTracker } from './gps-tracker.js';
 import { LiveTrainService } from './live-trains.js';
 import {
-  ThreatEngine, AlertOrchestrator, VoiceManager, SirenManager, HapticManager, Notifier,
+  ThreatEngine, AlertOrchestrator, SirenManager, HapticManager,
   LEVEL, LEVEL_NAME, TRACK_MODE,
 } from './train-alert.js';
 
@@ -85,12 +85,12 @@ live.preferLive = store.preferLive;
 
 const engine = new ThreatEngine();
 const siren = new SirenManager();
-const voice = new VoiceManager({ lang: store.lang });
 const orchestrator = new AlertOrchestrator({
-  voice,
+  voice: null,
   siren,
   haptics: new HapticManager(),
-  notifier: new Notifier(),
+  notifier: null,
+  buzzerOnly: true,
 });
 engine.setMode(store.mode);
 
@@ -109,6 +109,12 @@ function startDrill() {
     showToast('Select a beat chip before starting a drill', 'warn');
     return;
   }
+  siren.unlock();
+  if (store.voiceOn) siren.beepTest();
+  orchestrator.primaryKey = null;
+  orchestrator.primaryLevel = LEVEL.NONE;
+  orchestrator.ack = null;
+
   const dir = engine.mode === TRACK_MODE.DN ? 'DN' : 'UP';
   const no = dir === 'DN' ? '20678' : '20677';
   const sign = dir === 'UP' ? 1 : -1;
@@ -126,7 +132,7 @@ function startDrill() {
   };
   updateDrillButton();
   loop();
-  showToast(`130 km/h Vande Bharat (${no} ${dir}) drill active`, 'info');
+  showToast(`130 km/h Vande Bharat (${no} ${dir}) buzzer drill active`, 'info');
 }
 
 function stopDrill(silent = false) {
@@ -367,7 +373,7 @@ function bindHardwareRockers() {
       voiceBtn.classList.toggle('on', store.voiceOn);
       voiceBtn.setAttribute('aria-checked', String(store.voiceOn));
       const cap = document.getElementById('voice-status-cap');
-      if (cap) cap.textContent = store.voiceOn ? (store.lang === 'en' ? 'English' : store.lang === 'te' ? 'Telugu' : 'Telugu + EN') : 'Muted';
+      if (cap) cap.textContent = store.voiceOn ? 'Buzzer On' : 'Muted';
       const vu = document.getElementById('audio-vu');
       if (vu) vu.classList.toggle('vu-off', !store.voiceOn);
       const iw = document.getElementById('voice-icon-well');
@@ -399,13 +405,15 @@ function bindHardwareRockers() {
 
   voiceBtn?.addEventListener('click', () => {
     store.voiceOn = !store.voiceOn;
-    if (!store.voiceOn) {
+    if (store.voiceOn) {
+      siren.unlock();
+      siren.beepTest();
+    } else {
       siren.set(LEVEL.NONE);
-      try { window.speechSynthesis?.cancel(); } catch {}
     }
     pulseHaptic(25);
     syncRockers();
-    showToast(store.voiceOn ? 'Voice & siren audio armed' : 'Audio muted (visual alerts active)', 'info');
+    showToast(store.voiceOn ? 'Buzzer alarm active (beep only)' : 'Buzzer muted (visual alerts active)', 'info');
   });
 
   gpsBtn?.addEventListener('click', () => {
@@ -499,15 +507,10 @@ async function toggleSession() {
 
 async function activateSession() {
   siren.unlock();
+  if (store.voiceOn) siren.beepTest();
   try {
     if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
   } catch {}
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
-  }
-  if ('speechSynthesis' in window) {
-    try { window.speechSynthesis.speak(new SpeechSynthesisUtterance(' ')); } catch {}
-  }
 
   armed = true;
   gpsWatching = true;
@@ -528,7 +531,7 @@ async function activateSession() {
 
   startSessionTimer();
   loop();
-  showToast('Shift armed — proximity audio, haptics & GPS active', 'ok');
+  showToast('Shift armed — buzzer alarm, haptics & GPS active', 'ok');
 }
 
 async function deactivateSession() {
@@ -536,7 +539,7 @@ async function deactivateSession() {
   gpsWatching = false;
   document.body.dataset.armed = 'false';
   gps.stop();
-  siren.set(LEVEL.NONE);
+  if (!drillState) siren.set(LEVEL.NONE);
   window._syncRockers?.();
 
   if (wakeLock) {
@@ -666,14 +669,14 @@ function loop() {
 
   const result = engine.update(worker, trains, now);
 
-  if (armed) {
+  if (armed || drillTrain) {
     if (store.voiceOn) {
       orchestrator.process(result);
     } else {
       siren.set(LEVEL.NONE);
     }
     const p = result.primary;
-    if (p && !p.isSimulation && p.level >= LEVEL.WARN) {
+    if (armed && p && !p.isSimulation && p.level >= LEVEL.WARN) {
       const sig = `${p.key}:${p.level}`;
       if (sig !== lastLoggedThreatKey) {
         lastLoggedThreatKey = sig;
@@ -927,10 +930,38 @@ function render(worker, r, allCorridorTrains, drillTrain = null) {
 
   renderTrafficSparkline(allShown);
 
-  // 6. Corridor Traffic Rows inside Debossed Screen
+  // 6. Corridor Traffic Rows inside Debossed Screen (show nearby threats + upcoming corridor trains with full names)
   const ambientList = document.getElementById('ambient');
   if (ambientList) {
-    const rows = allShown.slice(0, 12);
+    const shownKeys = new Set(allShown.map(a => a.key));
+    const displayRows = [...allShown];
+    if (!drillTrain && worker) {
+      const extraUpcoming = allCorridorTrains
+        .filter(t => !shownKeys.has(t.key) && (engine.mode === TRACK_MODE.BOTH || t.line === engine.mode))
+        .map(t => {
+          const sign = t.dir === 'UP' ? 1 : -1;
+          const dLeadKm = (worker.km - (t.kmLead ?? t.kmNominal)) * sign;
+          const spd = Math.max(40, t.speedKmh || 85);
+          return {
+            key: t.key,
+            no: t.no,
+            name: t.name || `Train ${t.no}`,
+            line: t.line || t.dir,
+            level: LEVEL.AMBIENT,
+            active: true,
+            confirmed: Boolean(t.confirmed),
+            delayMin: t.delayMin || 0,
+            dLeadKm,
+            etaLowerS: dLeadKm > 0 ? Math.round((dLeadKm / spd) * 3600) : 0,
+            isSimulation: false,
+          };
+        })
+        .filter(t => t.dLeadKm >= -1 && t.dLeadKm <= 260)
+        .sort((a, b) => a.dLeadKm - b.dLeadKm);
+      displayRows.push(...extraUpcoming);
+    }
+
+    const rows = displayRows.slice(0, 12);
     if (rows.length > 0) {
       ambientList.innerHTML = rows.map(a => {
         const delayTag = a.isSimulation
@@ -940,14 +971,19 @@ function render(worker, r, allCorridorTrains, drillTrain = null) {
           : '<span class="row-tag">SCH</span>';
         const distTxt = a.dLeadKm > 0 ? `${a.dLeadKm.toFixed(1)} km` : a.confirmed ? 'Passing' : 'Due';
         const etaTxt = a.dLeadKm > 0 ? fmtClock(a.etaLowerS) : '—';
+        const trainName = (a.name && !/^Train \d/.test(a.name)) ? a.name : `Train ${a.no}`;
         return `
           <li class="corridor-row" data-level="${LEVEL_NAME[a.level]}" data-active="${a.active}">
-            <span class="row-no mono">${escapeHtml(a.no)}</span>
-            <span class="row-name">${escapeHtml(a.name)}</span>
-            ${delayTag}
-            <span class="row-dir mono">${a.line}</span>
-            <span class="row-dist mono">${distTxt}</span>
-            <span class="row-eta mono">${etaTxt}</span>
+            <div class="row-main">
+              <span class="row-no mono">${escapeHtml(a.no)}</span>
+              <span class="row-name">${escapeHtml(trainName)}</span>
+              ${delayTag}
+            </div>
+            <div class="row-meta mono">
+              <span class="row-dir">${a.line}</span>
+              <span class="row-dist">${distTxt}</span>
+              <span class="row-eta">${etaTxt}</span>
+            </div>
           </li>`;
       }).join('');
     } else {
@@ -993,10 +1029,16 @@ async function renderAlertAuditLog() {
       timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit',
     });
     return `<li class="corridor-row" data-level="${escapeHtml(l.level)}">
-      <span class="row-tag tag-live">${escapeHtml(l.level)}</span>
-      <span class="row-name"><strong>${escapeHtml(l.trainNo)}</strong> ${escapeHtml(l.trainName || '')}</span>
-      <span class="row-dist mono">${l.distanceKm != null ? `${l.distanceKm} km` : ''}</span>
-      <span class="row-eta mono">${timeStr}</span>
+      <div class="row-main">
+        <span class="row-no mono">${escapeHtml(l.trainNo)}</span>
+        <span class="row-name">${escapeHtml(l.trainName || `Train ${l.trainNo}`)}</span>
+        <span class="row-tag tag-live">${escapeHtml(l.level)}</span>
+      </div>
+      <div class="row-meta mono">
+        <span class="row-dir">${escapeHtml(l.line || '')}</span>
+        <span class="row-dist">${l.distanceKm != null ? `${l.distanceKm} km` : ''}</span>
+        <span class="row-eta">${timeStr}</span>
+      </div>
     </li>`;
   }).join('');
 }

@@ -4,7 +4,7 @@ import { projectToTrack, kmToLatLon, STATION_BY_CODE } from '../js/corridor.js';
 import { AlongTrackKalman, GpsTracker, GPS_STATE } from '../js/gps-tracker.js';
 import { TRAINS, istMidnight, timeAtKm, IST_OFFSET_MS } from '../js/timetable-data.js';
 import { estimatePosition } from '../js/live-trains.js';
-import { evaluateTrain, ThreatEngine, AlertOrchestrator, VoiceManager, LEVEL } from '../js/train-alert.js';
+import { evaluateTrain, ThreatEngine, AlertOrchestrator, VoiceManager, SirenManager, LEVEL } from '../js/train-alert.js';
 
 const T = no => TRAINS.find(t => t.no === no);
 const ist = (hh, mm, day = Date.UTC(2026, 8, 24)) => day - IST_OFFSET_MS + (hh * 60 + mm) * 60000;
@@ -1106,4 +1106,97 @@ test('v8.4 real RailCore v1 payload handling: ON_ROUTE, UNKNOWN, cancellation, d
   assert.equal(realTrain.distance_from_last_km, 3.437);
   assert.equal(realTrain.corridor_stops[1].status, 'departed');
   assert.equal(realTrain.corridor_stops[2].status, 'upcoming');
+});
+
+test('v8.5 AlertOrchestrator buzzerOnly skips speech/notifications and SirenManager buzzes', async () => {
+  let speakCalls = 0;
+  let notifyCalls = 0;
+  const sirenLevels = [];
+  const hapticLevels = [];
+  const voice = { speak() { speakCalls++; } };
+  const notifier = { notify() { notifyCalls++; } };
+  const siren = { set(lv) { sirenLevels.push(lv); } };
+  const haptics = { set(lv) { hapticLevels.push(lv); } };
+
+  const orch = new AlertOrchestrator({ voice, siren, haptics, notifier, buzzerOnly: true });
+  const train = { key: '12711:DN', no: '12711', name: 'Pinakini SF Express', line: 'DOWN', etaSec: 55, dLeadKm: 1.4, dir: 'DN', trackMatch: 'same' };
+  for (const level of [LEVEL.PREPARE, LEVEL.WARN, LEVEL.CRITICAL]) {
+    const primary = { ...train, level };
+    orch.process({
+      primary,
+      threats: [primary],
+      events: [{ type: 'ADJACENT', ts: { ...train, key: '12712:UP', line: 'UP', level: LEVEL.ADJACENT } }],
+    });
+  }
+  orch.process({
+    primary: null,
+    threats: [],
+    events: [{ type: 'CLEARED', ts: { ...train, level: LEVEL.NONE } }],
+  });
+  assert.equal(speakCalls, 0);
+  assert.equal(notifyCalls, 0);
+  assert.ok(sirenLevels.includes(LEVEL.CRITICAL));
+  assert.ok(sirenLevels.includes(LEVEL.NONE));
+  assert.ok(hapticLevels.includes(LEVEL.CRITICAL));
+
+  const origWindow = globalThis.window;
+  const origAC = globalThis.AudioContext;
+  try {
+    for (const withFilter of [true, false]) {
+      let oscCount = 0;
+      let filterCount = 0;
+      class MockAudioContext {
+        constructor() {
+          this.state = 'suspended';
+          this.currentTime = 1.0;
+          this.destination = {};
+        }
+        resume() { this.state = 'running'; return Promise.resolve(); }
+        createOscillator() {
+          oscCount++;
+          return {
+            type: 'sine',
+            frequency: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} },
+            connect(dest) { return dest; },
+            start() {},
+            stop() {},
+          };
+        }
+        createGain() {
+          return {
+            gain: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} },
+            connect(dest) { return dest; },
+          };
+        }
+      }
+      if (withFilter) {
+        MockAudioContext.prototype.createBiquadFilter = function createBiquadFilter() {
+          filterCount++;
+          return {
+            type: 'lowpass',
+            frequency: { value: 0, setValueAtTime() {} },
+            Q: { value: 0, setValueAtTime() {} },
+            connect(dest) { return dest; },
+          };
+        };
+      }
+      globalThis.window = { AudioContext: MockAudioContext };
+      globalThis.AudioContext = MockAudioContext;
+
+      const s = new SirenManager();
+      s.unlock();
+      s.beepTest();
+      s.set(LEVEL.PREPARE);
+      s.set(LEVEL.WARN);
+      s.set(LEVEL.CRITICAL);
+      s.set(LEVEL.NONE);
+      assert.ok(oscCount >= 3, `expected multiple buzzer oscillators (withFilter=${withFilter}, got=${oscCount})`);
+      if (withFilter) assert.ok(filterCount >= 3);
+    }
+  } finally {
+    if (origWindow === undefined) delete globalThis.window;
+    else globalThis.window = origWindow;
+    if (origAC === undefined) delete globalThis.AudioContext;
+    else globalThis.AudioContext = origAC;
+  }
 });
