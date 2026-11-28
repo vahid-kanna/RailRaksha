@@ -417,6 +417,9 @@ export function normalizeRailRadarPayload(raw) {
 export function normalizeRailCorePayload(raw) {
   const d = raw?.data || raw;
   if (!d || typeof d !== 'object') return null;
+  if (String(d.status || '').toLowerCase() === 'cancelled' || d.cancellation?.fully_cancelled === true) {
+    return null;
+  }
 
   const route = Array.isArray(d.stations) ? d.stations
     : Array.isArray(d.route) ? d.route
@@ -425,13 +428,21 @@ export function normalizeRailCorePayload(raw) {
   let lastPassed = null;
   for (const st of route) {
     const stStatus = String(st.status || '').toLowerCase();
-    if (stStatus === 'departed' || stStatus === 'at-station' || st.actual_departure || st.actual_arrival) {
+    if (
+      st.has_departed === true ||
+      st.has_arrived === true ||
+      st.travelled === true ||
+      stStatus === 'departed' ||
+      stStatus === 'at-station' ||
+      st.actual_departure ||
+      st.actual_arrival
+    ) {
       lastPassed = st;
     }
   }
 
   const code = String(
-    d.current_station_code || d.currentStationCode || lastPassed?.station_code || lastPassed?.stationCode || ''
+    d.current_station_code || d.currentStationCode || stationCodeOf(lastPassed) || ''
   ).trim().toUpperCase();
   if (!code) return null;
 
@@ -440,46 +451,60 @@ export function normalizeRailCorePayload(raw) {
     d.delay_minutes ?? d.delayMinutes ?? curStop.delay_departure_minutes ?? curStop.delay_arrival_minutes ?? 0
   );
   const statusStr = String(d.status || curStop.status || '').toLowerCase();
-  const event = (statusStr.includes('at_station') || statusStr === 'at-station' || statusStr === 'halted' || statusStr === 'arrived')
-    ? 'ARRIVED'
-    : 'DEPARTED';
+  const isAtStation =
+    statusStr.includes('at_station') ||
+    statusStr === 'at-station' ||
+    statusStr === 'halted' ||
+    statusStr === 'arrived' ||
+    (curStop.has_arrived === true && curStop.has_departed === false);
+  const event = isAtStation ? 'ARRIVED' : 'DEPARTED';
 
-  const actualDep = curStop.actual_departure || curStop.actual_arrival || curStop.eta || null;
-  const dir = inferCorridorDirection(route, code, d.next_station_code);
+  const actualDep = curStop.actual_departure || curStop.actual_arrival || d.last_reported_at || curStop.etd || curStop.eta || null;
+  const nextCode = d.next_station_code || d.next_stop?.station_code || null;
+  const dir = inferCorridorDirection(route, d.previous_station_code || code, nextCode);
+
+  const rawSpeed = Number(d.speed_kmph ?? d.speed_kmh ?? d.speedKmh ?? NaN);
+  const speedKmh = Number.isFinite(rawSpeed) && rawSpeed > 0 && rawSpeed <= 180 ? Math.round(rawSpeed) : null;
+  const rawDistLast = Number(d.distance_from_current_station_km ?? d.distance_from_last_km ?? 0);
+  const trainTypeStr = String(d.train_type || d.train_type_label || 'Express');
+  const vmaxKmh = /vande|shatabdi|gatimaan|tejas/i.test(trainTypeStr) ? 130 : 110;
 
   const corridorStops = route
     .filter(s => CORRIDOR_KM[stationCodeOf(s)] != null)
     .map(s => {
       const c = stationCodeOf(s);
+      const st = s.status
+        ? String(s.status).toLowerCase()
+        : (s.has_departed ? 'departed' : (s.has_arrived ? 'at-station' : 'upcoming'));
       return {
         code: c,
         km: CORRIDOR_KM[c],
-        status: String(s.status || 'upcoming').toLowerCase(),
+        status: st,
         schDep: s.scheduled_departure || s.scheduled_arrival || null,
-        actDep: s.actual_departure || s.actual_arrival || s.eta || null,
+        actDep: s.actual_departure || s.actual_arrival || s.etd || s.eta || null,
         delay: Number(s.delay_departure_minutes ?? s.delay_arrival_minutes ?? delayMin) || 0,
-        speedKmh: null,
+        speedKmh: speedKmh,
       };
     });
 
   return {
     train_no: String(d.train_number || d.trainNumber || '').trim(),
     train_name: String(d.train_name || d.trainName || '').trim(),
-    train_type: String(d.train_type || 'Express'),
+    train_type: trainTypeStr,
     dir,
     status: statusStr || 'running',
-    is_live: statusStr !== 'cancelled' && statusStr !== 'scheduled',
+    is_live: statusStr !== 'cancelled' && statusStr !== 'scheduled' && statusStr !== 'not_started',
     last_station_code: code,
-    last_station_name: String(curStop.station_name || curStop.stationName || code),
-    next_halt_code: d.next_station_code ? String(d.next_station_code).toUpperCase() : null,
-    next_halt_name: d.next_station_name || null,
-    distance_from_last_km: 0,
+    last_station_name: String(d.current_station_name || curStop.station_name || curStop.stationName || code),
+    next_halt_code: nextCode ? String(nextCode).toUpperCase() : null,
+    next_halt_name: d.next_station_name || d.next_stop?.station_name || null,
+    distance_from_last_km: Number.isFinite(rawDistLast) && rawDistLast >= 0 ? rawDistLast : 0,
     event,
     delay_min: Number.isFinite(delayMin) ? Math.round(delayMin) : 0,
     actual_departure: actualDep,
-    speed_kmh: null,
-    vmax_kmh: 110,
-    updated_at: raw?.meta?.timestamp || new Date().toISOString(),
+    speed_kmh: speedKmh,
+    vmax_kmh: vmaxKmh,
+    updated_at: d.last_reported_at || d.freshness?.last_reported_at || raw?.meta?.timestamp || new Date().toISOString(),
     corridor_stops: corridorStops,
   };
 }
@@ -1104,21 +1129,35 @@ export function normalizeBoardItem(provider, item, refNowMs = Date.now()) {
     const no = String(item.train_number || item.trainNumber || '').trim();
     if (!/^\d{4,5}$/.test(no)) return null;
     const rawStatus = String(item.status || '').toUpperCase();
-    if (rawStatus === 'CANCELLED') return null;
+    const cancelStatus = String(item.cancellation?.status || '').toUpperCase();
+    if (
+      rawStatus === 'CANCELLED' ||
+      item.cancellation?.fully_cancelled === true ||
+      cancelStatus === 'FULLY_CANCELLED'
+    ) {
+      return null;
+    }
 
     const basis = String(item.timing_basis || '').toLowerCase();
+    const hasCurrentStation = Boolean(item.current_station_code);
     let liveType = 'scheduled';
     if (rawStatus.includes('AT_STATION') || rawStatus === 'ARRIVED') liveType = 'at-station';
     else if (rawStatus === 'DEPARTED') liveType = 'departed';
     else if (rawStatus === 'NOT_STARTED') liveType = 'not-started';
-    else if (basis === 'live' || rawStatus === 'RUNNING' || rawStatus === 'UPCOMING') liveType = 'upcoming';
+    else if (rawStatus === 'ON_ROUTE' || rawStatus === 'RUNNING' || rawStatus === 'UPCOMING') liveType = 'upcoming';
+    else if (rawStatus !== 'UNKNOWN' && (basis === 'live' || hasCurrentStation)) liveType = 'upcoming';
+    else if (rawStatus === 'UNKNOWN' && hasCurrentStation && basis === 'live') liveType = 'upcoming';
 
     const delayRaw = item.departure_delay_minutes ?? item.arrival_delay_minutes ?? item.delay_minutes ?? null;
     const delayMinutes = delayRaw != null && Number.isFinite(Number(delayRaw)) ? Number(delayRaw) : null;
+    const expectedArr = item.estimated_arrival || item.scheduled_arrival || item.eta || null;
+    const expectedDep = item.estimated_departure || item.scheduled_departure || null;
+    const departedAt = item.actual_departure
+      || (liveType === 'departed' ? (expectedDep || expectedArr || item.last_reported_at || null) : null);
 
     return {
       no,
-      name: item.train_name || item.extended_train_name || `Train ${no}`,
+      name: item.extended_train_name || item.train_name || `Train ${no}`,
       type: item.train_type || 'Express',
       source: stationCodeOf(item.source_station_code || item.source),
       destination: stationCodeOf(item.destination_station_code || item.destination),
@@ -1126,9 +1165,9 @@ export function normalizeBoardItem(provider, item, refNowMs = Date.now()) {
       delayMinutes,
       board: {
         type: liveType,
-        expectedArrival: item.estimated_arrival || item.scheduled_arrival || item.eta || null,
-        expectedDeparture: item.estimated_departure || item.scheduled_departure || null,
-        departedAt: item.actual_departure || null,
+        expectedArrival: expectedArr,
+        expectedDeparture: expectedDep,
+        departedAt,
         delayMinutes,
         platform: item.platform_number || null,
       },

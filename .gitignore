@@ -15,6 +15,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.dev.vars
+.dev.vars.*
 .env.check.tmp
 *.check.tmp
 js/config-keys.js

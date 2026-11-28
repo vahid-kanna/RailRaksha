@@ -1030,3 +1030,80 @@ test('v8.3 IRPWM offline defect classifier, CSV export, Telugu Gang Diary & LWR/
   assert.ok(searchManualRules('వేడి').some(r => r.id === 'hot-weather'));
   assert.equal(matchLocalRule('GR 3.62')?.id, 'obstruction-protection');
 });
+
+test('v8.4 real RailCore v1 payload handling: ON_ROUTE, UNKNOWN, cancellation, departedAt & speed_kmph', () => {
+  const vbBoard = normalizeBoardItem('railcore', {
+    train_number: '20701',
+    train_name: 'TPTY VANDEBHARAT',
+    extended_train_name: 'Tirupati Vande Bharat Express',
+    source_station_code: 'SC',
+    destination_station_code: 'TPTY',
+    train_type: 'MAIL_EXPRESS',
+    estimated_arrival: '2026-11-28T11:24:00+05:30',
+    estimated_departure: '2026-11-28T11:28:00+05:30',
+    departure_delay_minutes: 23,
+    status: 'DEPARTED',
+    current_station_code: 'SDM',
+    timing_basis: 'live',
+    cancellation: { status: 'NOT_CANCELLED', fully_cancelled: false },
+  });
+  assert.equal(vbBoard.name, 'Tirupati Vande Bharat Express');
+  assert.equal(vbBoard.liveType, 'departed');
+  assert.equal(vbBoard.board.departedAt, '2026-11-28T11:28:00+05:30');
+
+  const onRouteBoard = normalizeBoardItem('railcore', {
+    train_number: '12077',
+    train_name: 'BZA JANSHATABDI',
+    extended_train_name: 'Vijayawada Jan Shatabdi Express',
+    estimated_arrival: '2026-11-28T11:48:00+05:30',
+    arrival_delay_minutes: 19,
+    status: 'ON_ROUTE',
+    current_station_code: 'TNR',
+    timing_basis: 'scheduled',
+  });
+  assert.equal(onRouteBoard.liveType, 'upcoming');
+
+  const unknownBoard = normalizeBoardItem('railcore', {
+    train_number: '67263',
+    train_name: 'MEMU',
+    status: 'UNKNOWN',
+    timing_basis: 'live',
+  });
+  assert.equal(unknownBoard.liveType, 'scheduled');
+
+  const cancelledBoard = normalizeBoardItem('railcore', {
+    train_number: '12711',
+    status: 'RUNNING',
+    cancellation: { status: 'FULLY_CANCELLED', fully_cancelled: true },
+  });
+  assert.equal(cancelledBoard, null);
+
+  const realTrain = normalizeRailCorePayload({
+    data: {
+      train_number: '20701',
+      train_name: 'Tirupati Vande Bharat Express',
+      status: 'RUNNING',
+      train_type: 'VANDE_BHARAT',
+      current_station_code: 'SDM',
+      current_station_name: 'Surareddipalem',
+      previous_station_code: 'OGL',
+      next_station_code: 'NLR',
+      delay_minutes: 25,
+      speed_kmph: 102,
+      distance_from_current_station_km: 3.437,
+      last_reported_at: '2026-11-28T11:38:28.000+05:30',
+      next_stop: { station_code: 'NLR', station_name: 'Nellore' },
+      stations: [
+        { station_code: 'TEL', has_arrived: true, has_departed: true, travelled: true },
+        { station_code: 'OGL', has_arrived: true, has_departed: true, actual_departure: '2026-11-28T11:29:16.000+05:30', delay_departure_minutes: 24 },
+        { station_code: 'NLR', has_arrived: false, has_departed: false, eta: '2026-11-28T12:35:03.482+05:30' },
+      ],
+    },
+  });
+  assert.equal(realTrain.dir, 'DN');
+  assert.equal(realTrain.speed_kmh, 102);
+  assert.equal(realTrain.vmax_kmh, 130);
+  assert.equal(realTrain.distance_from_last_km, 3.437);
+  assert.equal(realTrain.corridor_stops[1].status, 'departed');
+  assert.equal(realTrain.corridor_stops[2].status, 'upcoming');
+});
