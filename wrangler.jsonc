@@ -2,6 +2,12 @@
   "name": "railraksha",
   "main": "./worker/index.js",
   "compatibility_date": "2026-10-20",
+  "kv_namespaces": [
+    {
+      "binding": "CORRIDOR_KV",
+      "id": "65119cdcfbff420384bcd5cb77a3d663"
+    }
+  ],
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
