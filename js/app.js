@@ -1,11 +1,11 @@
 /**
- * RailRaksha — Main Application Controller v8.1 (app.js)
+ * RailRaksha — Main Application Controller v8.3 (app.js)
  *
  * Live-Data-First Corridor Safety Instrument:
- *   - Primary Live Feed: Cloudflare Worker `/api/corridor-live` (OGL, SKM, NLR RailRadar v1 boards)
+ *   - Primary Live Feed: Cloudflare Worker `/api/corridor-live` (irctc.dev / RailCore / RailRadar failover)
  *   - Strict Offline Fallback: 53-train corridor schedule activates automatically only when offline/unreached
- *   - Physical Tactile Instrument UI: 240px brushed-aluminum proximity dial, 3-layer pushable keys,
- *     physical rocker switches, knurled closure meter, etched 7-bar traffic sparkline & debossed screens
+ *   - Physical Tactile Instrument UI: 232px machined proximity dial, 3-layer pushable keys,
+ *     physical rocker switches, precision closure meter, calibrated 7-bar sparkline & debossed screens
  */
 
 import { STATIONS, STATION_BY_CODE, kmToLatLon, nearestStation } from './corridor.js';
@@ -37,8 +37,10 @@ function pulseHaptic(ms = 25) {
 
 function getRailRadarHeaders() {
   const headers = {};
+  const irctcKey = (getConfig('irctc_dev_key') || '').trim();
   const rrKey = (getConfig('railradar_key') || '').trim();
   const rcKey = (getConfig('railcore_key') || '').trim();
+  if (irctcKey) headers['X-IRCTC-Key'] = irctcKey;
   if (rrKey) headers['X-RailRadar-Key'] = rrKey;
   if (rcKey) headers['X-RailCore-Key'] = rcKey;
   return headers;
@@ -59,7 +61,10 @@ const store = {
 
 // ── Live Corridor Fetcher (Cloudflare Worker `/api/corridor-live` FIRST) ─────
 async function fetchCorridorLive(signal, forceFresh = false) {
-  const url = forceFresh ? '/api/corridor-live?fresh=1' : '/api/corridor-live';
+  const qs = [];
+  if (forceFresh) qs.push('fresh=1');
+  if (getConfig('quota_saver') === '1') qs.push('quota_saver=1');
+  const url = qs.length ? `/api/corridor-live?${qs.join('&')}` : '/api/corridor-live';
   const r = await fetch(url, { signal, cache: 'no-store', headers: getRailRadarHeaders() });
   if (!r.ok) throw new Error(`Corridor feed HTTP ${r.status}`);
   return await r.json();
@@ -97,7 +102,7 @@ let activeTrafficTab = 'trains';
 let lastLoggedThreatKey = null;
 let drillState = null;
 
-// ── Simulation Drill (Strictly Isolated from Live Traffic) ───────────────────
+// ── Simulation Drill (130 km/h Vande Bharat Approach -> Critical -> Receding) ─
 function startDrill() {
   const worker = gps.getPosition();
   if (!worker) {
@@ -105,23 +110,31 @@ function startDrill() {
     return;
   }
   const dir = engine.mode === TRACK_MODE.DN ? 'DN' : 'UP';
+  const no = dir === 'DN' ? '20678' : '20677';
   const sign = dir === 'UP' ? 1 : -1;
+  const sigmaKm = (worker.sigmaM ?? 0) / 1000;
+  ['DRILL-12711', 'DRILL-20677', 'DRILL-20678'].forEach(k => engine.mem.delete(k));
   drillState = {
     startedAtMs: Date.now(),
     dir,
-    startKm: worker.km - sign * 9.5,
-    speedKmh: 115,
-    accel: 3.0,
+    no,
+    key: `DRILL-${no}`,
+    sigmaKm,
+    startKm: worker.km - sign * (11.5 + 0.2 + sigmaKm),
+    speedKmh: 130,
+    accel: 12.5,
   };
   updateDrillButton();
   loop();
-  showToast('Simulation drill active — synthetic approach running', 'info');
+  showToast(`130 km/h Vande Bharat (${no} ${dir}) drill active`, 'info');
 }
 
 function stopDrill(silent = false) {
   if (!drillState) return;
   drillState = null;
-  engine.mem.delete('DRILL-12711');
+  ['DRILL-12711', 'DRILL-20677', 'DRILL-20678'].forEach(k => engine.mem.delete(k));
+  const bannerTxt = document.querySelector('#drill-banner .drill-strip-text');
+  if (bannerTxt) bannerTxt.textContent = 'SIMULATION DRILL · NOT LIVE TRAFFIC';
   if (!armed) siren.set(LEVEL.NONE);
   updateDrillButton();
   loop();
@@ -145,33 +158,41 @@ function getDrillTrainState(worker, nowMs) {
   const sign = drillState.dir === 'UP' ? 1 : -1;
   const elapsedH = ((nowMs - drillState.startedAtMs) / 3600000) * drillState.accel;
   const kmNominal = drillState.startKm + sign * drillState.speedKmh * elapsedH;
+  const kmLead = kmNominal + sign * 0.2;
+  const kmLag = kmNominal - sign * 0.2;
 
   const distPast = (kmNominal - worker.km) * sign;
-  if (distPast > 2.5) {
+  const sigmaKm = (worker.sigmaM ?? drillState.sigmaKm * 1000) / 1000;
+  if (distPast > sigmaKm + 3.2) {
     stopDrill(true);
-    showToast('Drill complete — simulated train cleared beat', 'ok');
+    showToast('Drill complete — 130 km/h Vande Bharat cleared (0 false alarms)', 'ok');
     return null;
   }
 
+  const dLag = (worker.km - kmLag) * sign + sigmaKm;
+  const receding = dLag < -(0.4 + 0.2);
+
   return {
-    key: 'DRILL-12711',
-    no: '12711',
-    name: 'Pinakini Express (DRILL)',
-    te: 'పినాకిని ఎక్స్‌ప్రెస్ (డ్రిల్)',
+    key: drillState.key,
+    no: drillState.no,
+    name: 'Vande Bharat Express (DRILL)',
+    te: 'వందే భారత్ ఎక్స్‌ప్రెస్ (డ్రిల్)',
     dir: drillState.dir,
     line: drillState.dir,
-    vmaxKmh: 120,
+    vmaxKmh: 130,
     speedKmh: drillState.speedKmh,
-    lengthKm: 0.55,
+    lengthKm: 0.4,
     source: 'DRILL',
     confirmed: true,
     isSimulation: true,
+    receding,
+    distPastKm: Math.max(0, distPast),
     dataAgeS: 0,
     delayMin: 0,
-    phase: 'RUNNING',
+    phase: receding ? 'RECEDING' : 'RUNNING',
     kmNominal,
-    kmLead: kmNominal + sign * 0.2,
-    kmLag: kmNominal - sign * 0.25,
+    kmLead,
+    kmLag,
   };
 }
 
@@ -243,6 +264,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   populateStationSelects();
+  initDialTicks();
   loadSettings();
   setupNavigation();
   setupSettings();
@@ -639,9 +661,8 @@ function loop() {
       : worker.label;
   }
 
-  const trains = live.getTrainStates(worker?.km, now);
   const drillTrain = getDrillTrainState(worker, now);
-  if (drillTrain) trains.push(drillTrain);
+  const trains = drillTrain ? [drillTrain] : live.getTrainStates(worker?.km, now);
 
   const result = engine.update(worker, trains, now);
 
@@ -672,7 +693,7 @@ function loop() {
     }
   }
 
-  render(worker, result, trains);
+  render(worker, result, trains, drillTrain);
 }
 
 const fmtClock = s => {
@@ -688,12 +709,48 @@ const LEVEL_TE = {
   4: 'ప్రమాదం · ఖాళీ చేయండి!',
 };
 
-const DIAL_CIRCUMFERENCE = 276.46; // 2 * pi * 44
+const DIAL_CIRCUMFERENCE = 527.79; // 2 * pi * 84
 
-function render(worker, r, allCorridorTrains) {
+function initDialTicks() {
+  const g = document.getElementById('dial-ticks');
+  if (!g || g.childElementCount > 0) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 60; i++) {
+    const rad = (i * 6 * Math.PI) / 180;
+    const major = i % 5 === 0;
+    const r1 = major ? 90.5 : 93;
+    const r2 = 96.5;
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', (100 + r1 * Math.cos(rad)).toFixed(2));
+    line.setAttribute('y1', (100 + r1 * Math.sin(rad)).toFixed(2));
+    line.setAttribute('x2', (100 + r2 * Math.cos(rad)).toFixed(2));
+    line.setAttribute('y2', (100 + r2 * Math.sin(rad)).toFixed(2));
+    line.setAttribute('class', major ? 'dial-tick major' : 'dial-tick');
+    frag.appendChild(line);
+  }
+  g.appendChild(frag);
+}
+
+function render(worker, r, allCorridorTrains, drillTrain = null) {
   const p = r.primary;
   const lvl = p ? p.level : LEVEL.NONE;
   document.body.dataset.level = r.noLocation ? 'NOLOC' : LEVEL_NAME[lvl];
+
+  const drillBannerTxt = document.querySelector('#drill-banner .drill-strip-text');
+  if (drillBannerTxt && drillState && drillTrain) {
+    if (p?.isSimulation && p.atSite) {
+      drillBannerTxt.textContent = `DRILL · ${drillTrain.no} VB 130 KM/H · PASSING`;
+    } else if (p?.isSimulation && lvl === LEVEL.CRITICAL) {
+      drillBannerTxt.textContent = `DRILL · ${drillTrain.no} VB 130 KM/H · CRITICAL`;
+    } else if (p?.isSimulation && lvl === LEVEL.WARN) {
+      drillBannerTxt.textContent = `DRILL · ${drillTrain.no} VB 130 KM/H · WARN`;
+    } else if (p?.isSimulation) {
+      drillBannerTxt.textContent = `DRILL · ${drillTrain.no} VB 130 KM/H · PREPARE`;
+    } else if (drillTrain.receding) {
+      drillBannerTxt.textContent = `DRILL · ${drillTrain.no} RECEDING · CLEARED (0 FALSE ALARM)`;
+    }
+  }
 
   const fs = live.feedStatus();
   const isOnline = navigator.onLine !== false;
@@ -775,7 +832,15 @@ function render(worker, r, allCorridorTrains) {
   const proxLeft = document.getElementById('prox-left');
   const proxRight = document.getElementById('prox-right');
 
-  if (closest) {
+  if (drillTrain?.receding && !p) {
+    if (nTitle) nTitle.textContent = `${drillTrain.no} ${drillTrain.name}`;
+    if (nSub) nSub.textContent = `${drillTrain.dir} · ${drillTrain.speedKmh} km/h · Receding (${drillTrain.distPastKm.toFixed(1)} km past)`;
+    if (nWell) nWell.classList.remove('well-lit');
+    if (proxFill) proxFill.style.width = '6%';
+    if (proxThumb) proxThumb.style.left = '6%';
+    if (proxLeft) proxLeft.textContent = 'Cleared worksite';
+    if (proxRight) proxRight.textContent = '0 FALSE ALARM';
+  } else if (closest) {
     const distKm = Math.max(0, closest.dLeadKm);
     const delayLabel = closest.isSimulation
       ? 'SIMULATED DRILL'
@@ -812,7 +877,7 @@ function render(worker, r, allCorridorTrains) {
   const guardText = document.getElementById('guard-pill-text');
   const guardPill = document.getElementById('guard-pill');
   if (guardText) {
-    guardText.textContent = drillState ? 'DRILL' : lvl === LEVEL.CRITICAL ? 'CLEAR NOW' : armed ? 'ARMED' : 'STANDBY';
+    guardText.textContent = drillTrain?.receding && !p ? 'CLEARED' : drillState ? 'DRILL' : lvl === LEVEL.CRITICAL ? 'CLEAR NOW' : armed ? 'ARMED' : 'STANDBY';
   }
   if (guardPill) {
     guardPill.classList.toggle('pill-danger', lvl === LEVEL.CRITICAL);
@@ -1024,7 +1089,7 @@ const SETTING_FIELDS = [
   'work_station_a', 'work_station_b',
   'voice_lang', 'theme',
   'ai_base_url', 'ai_model', 'ai_api_key',
-  'owm_api_key', 'railradar_key', 'railcore_key',
+  'owm_api_key', 'irctc_dev_key', 'railradar_key', 'railcore_key',
   'alert_dist_critical', 'alert_dist_warn', 'alert_dist_prepare',
   'alert_min_critical',  'alert_min_warn',  'alert_min_prepare',
 ];
@@ -1091,7 +1156,13 @@ async function openSettings() {
     } else if (health.reachable && health.services) {
       const aiTxt = health.services.ai?.configured ? `AI: ${health.services.ai.model}` : 'AI: Offline fallback';
       const lt = health.services.liveTrains;
-      const liveTxt = lt?.configured ? `Live Feed: ${lt.provider || 'connected'}` : 'Live Feed: Schedule';
+      const providerLabels = { irctcdev: 'irctc.dev', railcore: 'RailCore', railradar: 'RailRadar' };
+      const hasPersonal = Boolean(getConfig('irctc_dev_key') || getConfig('railcore_key') || getConfig('railradar_key'));
+      const liveTxt = lt?.configured
+        ? `Live Feed: ${providerLabels[lt.provider] || lt.provider || 'connected'}`
+        : hasPersonal
+        ? 'Live Feed: Personal Key'
+        : 'Live Feed: Schedule';
       statusEl.textContent = `Cloudflare Edge · ${aiTxt} · ${liveTxt}`;
     } else {
       statusEl.textContent = 'Local preview mode';
@@ -1105,6 +1176,7 @@ function closeSettings() {
 }
 
 function saveSettings() {
+  const prevIRCTC = (getConfig('irctc_dev_key') || '').trim();
   const prevRR = (getConfig('railradar_key') || '').trim();
   const prevRC = (getConfig('railcore_key') || '').trim();
   SETTING_FIELDS.forEach(key => {
@@ -1117,9 +1189,10 @@ function saveSettings() {
   closeSettings();
   window.dispatchEvent(new CustomEvent('railraksha:settings-updated'));
   loop();
+  const nextIRCTC = (getConfig('irctc_dev_key') || '').trim();
   const nextRR = (getConfig('railradar_key') || '').trim();
   const nextRC = (getConfig('railcore_key') || '').trim();
-  if (nextRR !== prevRR || nextRC !== prevRC) {
+  if (nextIRCTC !== prevIRCTC || nextRR !== prevRR || nextRC !== prevRC) {
     window._pollCorridorNow?.(true);
     showToast('Settings saved — syncing live feed...', 'info');
   } else {

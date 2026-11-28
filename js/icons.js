@@ -78,27 +78,27 @@ export const Icons = {
   info: (size = 24, color = 'currentColor') => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
 };
 
-// Train type to icon mapping
+// Train type to icon mapping (Cool Titanium + Signal Vermilion instrumentation palette)
 export const TrainTypeIcons = {
-  RAJDHANI: Icons.crown(16, '#FFD700'),
-  SHATABDI: Icons.lightning(16, '#38BDF8'),
-  VANDE_BHARAT: Icons.medal(16, '#FF6B00'),
-  DURONTO: Icons.wind(16, '#06B6D4'),
-  MAIL: Icons.mail(16, '#94A3B8'),
-  JAN_SHATABDI: Icons.ticket(16, '#F59E0B'),
-  FREIGHT: Icons.truck(16, '#EF4444'),
-  EXPRESS: Icons.train(16, '#10B981'),
-  PASSENGER: Icons.train(16, '#64748B'),
+  RAJDHANI: Icons.crown(16, '#E5481F'),
+  SHATABDI: Icons.lightning(16, '#E5481F'),
+  VANDE_BHARAT: Icons.medal(16, '#E5481F'),
+  DURONTO: Icons.wind(16, '#566375'),
+  MAIL: Icons.mail(16, '#566375'),
+  JAN_SHATABDI: Icons.ticket(16, '#D97706'),
+  FREIGHT: Icons.truck(16, '#C81E1E'),
+  EXPRESS: Icons.train(16, 'currentColor'),
+  PASSENGER: Icons.train(16, '#566375'),
 };
 
 // Helper to get icon with color
 export function getStatusIcon(status, size = 24) {
   const colors = {
-    safe: '#10B981',
-    prepare: '#F59E0B',
-    warn: '#F97316',
-    danger: '#EF4444',
-    critical: '#EF4444',
+    safe: '#566375',
+    prepare: '#D97706',
+    warn: '#E5481F',
+    danger: '#C81E1E',
+    critical: '#C81E1E',
   };
   
   switch (status) {
@@ -116,6 +116,6 @@ export function getStatusIcon(status, size = 24) {
     case 'CRITICAL':
       return Icons.siren(size, colors.danger);
     default:
-      return Icons.shield(size, '#94A3B8');
+      return Icons.shield(size, '#566375');
   }
 }

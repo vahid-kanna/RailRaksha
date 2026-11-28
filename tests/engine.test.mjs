@@ -723,3 +723,310 @@ test('v8.2 buildLiveCorridorState: uses departedAt + 2-station linear bracketing
   assert.equal(st.delayMin, 102);
   assert.equal(st.confirmed, true);
 });
+
+/* ── v8.3 irctc.dev, Receding Filter, Defect Classifier, Telugu Diary & LWR ── */
+import { normalizeIrctcDevPayload, normalizeBoardItem, resolveAIChain } from '../worker/handlers.js';
+import { ALL_OFFLINE_DEFECT_PRESETS, classifyOfflineDefect, buildDefectsCsv } from '../js/defect-report.js';
+import { analyzeRisks } from '../js/weather-alert.js';
+import { searchManualRules, matchLocalRule } from '../js/pw-manual.js';
+
+test('v8.3 irctc.dev station/train normalization, KV cache, quota_saver & failover', async () => {
+  assert.match(CORS_HEADERS['Access-Control-Allow-Headers'], /\bX-IRCTC-Key\b/);
+
+  const normTrain = normalizeIrctcDevPayload({
+    success: true,
+    queryTime: '2026-11-28T10:15:00+05:30',
+    data: {
+      trainNumber: '20678',
+      trainName: 'Vande Bharat Express',
+      trainType: 'VANDE BHARAT',
+      locationStatus: 'Departed Singarayakonda',
+      currentLocation: 'Singarayakonda',
+      currentDelayMin: 6,
+      speedKmh: 128,
+      updatedAt: '2026-11-28T10:15:00+05:30',
+      stops: [
+        { stationName: 'Nellore', stationCode: 'NLR', status: 'passed', departs: '09:12', delayMin: 4 },
+        { stationName: 'Singarayakonda', stationCode: 'SKM', status: 'current', departs: '10:08', delayMin: 6 },
+        { stationName: 'Ongole', stationCode: 'OGL', status: 'upcoming', arrives: '10:28', delayMin: 6 },
+      ],
+    },
+  });
+  assert.ok(normTrain);
+  assert.equal(normTrain.train_no, '20678');
+  assert.equal(normTrain.dir, 'UP');
+  assert.equal(normTrain.last_station_code, 'SKM');
+  assert.equal(normTrain.next_halt_code, 'OGL');
+  assert.equal(normTrain.event, 'DEPARTED');
+  assert.equal(normTrain.delay_min, 6);
+  assert.equal(normTrain.speed_kmh, 128);
+  assert.equal(normTrain.is_live, true);
+  assert.equal(normTrain.corridor_stops.length, 3);
+  assert.match(normTrain.actual_departure, /2026-11-28T10:08:00\+05:30/);
+
+  assert.equal(normalizeIrctcDevPayload({ success: true, data: { trainNumber: '12711', isCancelled: true } }), null);
+
+  const refNow = Date.parse('2026-11-28T10:15:00+05:30');
+  const boardItem = normalizeBoardItem('irctcdev', {
+    trainNo: '12711',
+    trainName: 'Pinakini SF Express',
+    route: 'BZA - MAS',
+    status: 'DEPARTED',
+    platform: { number: 2 },
+    arrival: { actualOrEstimated: '10:03', delayMinutes: 8, status: 'Arrived' },
+    departure: { actualOrEstimated: '10:05', delayMinutes: 8, status: 'Departed' },
+  }, refNow);
+  assert.ok(boardItem);
+  assert.equal(boardItem.no, '12711');
+  assert.equal(boardItem.source, 'BZA');
+  assert.equal(boardItem.destination, 'MAS');
+  assert.equal(boardItem.liveType, 'departed');
+  assert.equal(boardItem.board.platform, 2);
+  assert.match(boardItem.board.departedAt, /2026-11-28T10:05:00\+05:30/);
+  assert.equal(normalizeBoardItem('irctcdev', { trainNo: '12711', isCancelled: true }, refNow), null);
+
+  const hResp = await handleHealth(
+    new Request('https://railraksha.tech/api/health'),
+    { IRCTC_DEV_API_KEY: 'ir-k', RAILCORE_API_KEY: 'rc-k', RAILRADAR_API_KEY: 'rr-k', GEMINI_API_KEY: 'g-k' }
+  );
+  const hBody = await hResp.json();
+  assert.equal(hBody.version, '8.3');
+  assert.equal(hBody.services.liveTrains.irctcDevConfigured, true);
+  assert.equal(hBody.services.liveTrains.railcoreConfigured, true);
+  assert.equal(hBody.services.liveTrains.railradarConfigured, true);
+  assert.equal(hBody.services.liveTrains.provider, 'irctc.dev+railcore+railradar');
+
+  // Verify AI provider failover order & multimodal vision filtering
+  const aiChain = resolveAIChain({ GEMINI_API_KEY: 'gk', GROQ_API_KEY: 'grk', OPENROUTER_API_KEY: 'ork' });
+  assert.deepEqual(aiChain.map(p => p.name), ['gemini', 'groq', 'openrouter']);
+  assert.equal(aiChain[1].visionModels.includes('llama-3.3-70b-versatile'), false);
+
+  const origFetch = globalThis.fetch;
+  const origCaches = globalThis.caches;
+  globalThis.caches = { default: createMemoryCache() };
+  const kvStore = new Map();
+  const mockKV = {
+    async get(k) { return kvStore.get(k) || null; },
+    async put(k, v) { kvStore.set(k, v); },
+  };
+
+  try {
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      const u = String(url);
+      calls.push({ url: u, headers: init?.headers || {} });
+      if (u.startsWith('https://api.irctc.dev/api/v1/live/station/')) {
+        return new Response(JSON.stringify({ success: false, code: 'RATE_LIMIT', error: 'Quota exhausted' }), { status: 429 });
+      }
+      if (u.startsWith('https://ir.railcore.tech/v1/stations/OGL/live')) {
+        return new Response(JSON.stringify({
+          success: true,
+          meta: { timestamp: '2026-11-28T10:15:00+05:30' },
+          data: {
+            trains: [{
+              train_number: '20678',
+              train_name: 'Vande Bharat Express',
+              source_station_code: 'BZA',
+              destination_station_code: 'MAS',
+              estimated_arrival: '2026-11-28T10:25:00+05:30',
+              arrival_delay_minutes: 0,
+              timing_basis: 'live',
+              status: 'RUNNING',
+            }],
+          },
+        }), { status: 200 });
+      }
+      if (u.startsWith('https://api.irctc.dev/api/v1/live/20678')) {
+        return new Response(JSON.stringify({
+          success: true,
+          queryTime: '2026-11-28T10:15:00+05:30',
+          data: {
+            trainNumber: '20678',
+            trainName: 'Vande Bharat Express',
+            currentStationCode: 'OGL',
+            locationStatus: 'Departed Ongole',
+            currentDelayMin: 2,
+            speedKmh: 130,
+            stops: [
+              { stationCode: 'OGL', status: 'passed', departs: '10:10' },
+              { stationCode: 'SKM', status: 'upcoming', arrives: '10:24' },
+            ],
+          },
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    };
+
+    // irctc.dev 429 fails over cleanly to RailCore, quota_saver=1 hits 1 anchor (OGL), caches in KV
+    const corrRes = await handleCorridorLive(
+      new Request('https://railraksha.tech/api/corridor-live?quota_saver=1'),
+      { IRCTC_DEV_API_KEY: 'ir-exhausted', RAILCORE_API_KEY: 'rc-active', CORRIDOR_KV: mockKV }
+    );
+    assert.equal(corrRes.status, 200);
+    assert.match(corrRes.headers.get('Cache-Control') || '', /s-maxage=600/);
+    const corrBody = await corrRes.json();
+    assert.equal(corrBody.ok, true);
+    assert.equal(corrBody.source, 'railcore-v1');
+    assert.equal(corrBody.trains.length, 1);
+    assert.equal(corrBody.trains[0].no, '20678');
+    assert.ok(calls.some(c => c.url.includes('api.irctc.dev/api/v1/live/station/OGL?hours=8') && c.headers['x-api-key'] === 'ir-exhausted'));
+    assert.ok(!calls.some(c => c.url.includes('/stations/NLR/')), 'quota_saver=1 must query only 1 anchor');
+    assert.ok(kvStore.size >= 1, 'Expected shared CORRIDOR_KV cache population');
+
+    // Personal X-IRCTC-Key works on /api/live-status even without server IRCTC_DEV_API_KEY
+    const liveRes = await handleLiveStatus(
+      new Request('https://railraksha.tech/api/live-status?train=20678', {
+        headers: { 'X-IRCTC-Key': 'personal-irctc-key' },
+      }),
+      { RAILCORE_API_KEY: 'rc-env' }
+    );
+    assert.equal(liveRes.status, 200);
+    const liveBody = await liveRes.json();
+    assert.equal(liveBody.provider, 'irctcdev-v1');
+    assert.equal(liveBody.dir, 'DN');
+    assert.equal(liveBody.speed_kmh, 130);
+    assert.ok(calls.some(c => c.url.includes('api.irctc.dev/api/v1/live/20678') && c.headers['x-api-key'] === 'personal-irctc-key'));
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.caches = origCaches;
+  }
+});
+
+test('v8.3 130 km/h 3-tier alerts + directional receding-train vector zero-false-alarm guarantee', () => {
+  const worker = { km: 293.0, sigmaM: 10 };
+  const mkTrain = (kmNom, confirmed = true) => ({
+    key: 'VB-20678',
+    no: '20678',
+    dir: 'UP',
+    line: 'UP',
+    confirmed,
+    kmNominal: kmNom,
+    kmLead: kmNom + 0.25,
+    kmLag: kmNom - 0.30,
+    vmaxKmh: 130,
+    speedKmh: 130,
+    lengthKm: 0.45,
+  });
+
+  // 3-tier escalating envelope for 130 km/h express train
+  const prep = evaluateTrain(worker, mkTrain(278.5)); // dLead = 14.25 km, etaLower = 394.6s -> PREPARE
+  assert.equal(prep.level, LEVEL.PREPARE);
+  assert.equal(prep.vector, 'APPROACHING');
+
+  const warn = evaluateTrain(worker, mkTrain(283.5)); // dLead = 9.25 km, etaLower = 256s <= 300s -> WARN
+  assert.equal(warn.level, LEVEL.WARN);
+
+  const crit = evaluateTrain(worker, mkTrain(287.8)); // dLead = 4.95 km, etaLower = 137s <= 180s -> CRITICAL
+  assert.equal(crit.level, LEVEL.CRITICAL);
+
+  const atSite = evaluateTrain(worker, mkTrain(293.0));
+  assert.equal(atSite.level, LEVEL.CRITICAL);
+  assert.equal(atSite.atSite, true);
+  assert.equal(atSite.vector, 'AT_SITE');
+
+  // Receding train vector: once past (dLag < -(0.45 + 0.2)), CLEARED and zero false alarms
+  const receded = evaluateTrain(worker, mkTrain(294.2));
+  assert.equal(receded.level, LEVEL.CLEARED);
+  assert.equal(receded.passed, true);
+  assert.equal(receded.receding, true);
+  assert.equal(receded.atSite, false);
+  assert.equal(receded.vector, 'RECEDING');
+
+  // ThreatEngine under heavy GPS noise spike after CLEARED must NEVER re-alarm on receding train
+  const eng = new ThreatEngine();
+  assert.equal(eng.update(worker, [mkTrain(288.0)], 0).primary.level, LEVEL.CRITICAL);
+  const clrRes = eng.update(worker, [mkTrain(294.2)], 10000);
+  assert.equal(clrRes.primary, null);
+  assert.equal(clrRes.events[0]?.type, 'CLEARED');
+
+  // Sudden GPS noise spike (sigmaM jumps 10 m -> 350 m, worker km jitters +60 m) while train is receding
+  const noisyWorker = { km: 293.06, sigmaM: 350 };
+  const noisyAfterPass = eng.update(noisyWorker, [mkTrain(294.0)], 11000);
+  assert.equal(noisyAfterPass.primary, null, 'Receding train must NOT re-trigger CRITICAL/WARN under GPS noise');
+  assert.equal(noisyAfterPass.threats.length, 0);
+  assert.equal(noisyAfterPass.events.length, 0);
+
+  // Overdue unconfirmed schedule ghost must NOT claim atSite=true or beat real approaching train
+  const ghost = { key: 'GHOST', no: '17644', dir: 'UP', line: 'UP', confirmed: false, kmNominal: 315, kmLead: 320, kmLag: 150, vmaxKmh: 80, speedKmh: 50, lengthKm: 0.55 };
+  const realApproaching = { key: 'REAL', no: '12711', dir: 'UP', line: 'UP', confirmed: false, kmNominal: 270, kmLead: 272, kmLag: 240, vmaxKmh: 110, speedKmh: 85, lengthKm: 0.55 };
+  const ghostEval = evaluateTrain(worker, ghost);
+  assert.equal(ghostEval.atSite, false);
+  assert.equal(ghostEval.vector, 'OVERDUE');
+  const ordered = eng.update(worker, [ghost, realApproaching], 20000);
+  assert.equal(ordered.ambient[0].key, 'REAL', 'Approaching train must outrank overdue schedule ghost');
+
+  // GpsTracker tolerates stale legacy manual codes without crashing
+  const memStorage = {
+    getItem: () => JSON.stringify({ code: 'CLX', km: 356 }),
+    setItem() {},
+    removeItem() {},
+  };
+  const g = new GpsTracker({ storage: memStorage, geolocation: null, now: () => 1e12 });
+  assert.equal(g.manual, null);
+});
+
+test('v8.3 IRPWM offline defect classifier, CSV export, Telugu Gang Diary & LWR/Manual offline checks', () => {
+  assert.ok(ALL_OFFLINE_DEFECT_PRESETS.length >= 10);
+  const corr = classifyOfflineDefect('rail-corrosion', 'Heavy salt pitting on rail foot at km 293/6', true);
+  assert.equal(corr.severity, 'HIGH');
+  assert.equal(corr.irpwmCode, 'RC-07');
+  assert.match(corr.irpwmReference, /IRPWM Para 2\.7/);
+  assert.match(corr.description, /km 293\/6/);
+
+  const noteClassified = classifyOfflineDefect('unknown-id', '2 missing pandrol clips near curve');
+  assert.equal(noteClassified.irpwmCode, 'FN-03');
+  assert.match(noteClassified.defectType, /Pandrol/i);
+
+  const csv = buildDefectsCsv([
+    {
+      date: '2026-11-28',
+      timestamp: '2026-11-28T09:30:00Z',
+      status: 'REPORTED',
+      severity: 'HIGH',
+      defectType: 'AT Weld Fracture, LH Rail',
+      irpwmCode: 'WC-02',
+      speedRestriction: '30 km/h Caution Order',
+      gps: 'km 293.4 · SKM↔TGU',
+      description: 'Hairline "weld" crack noticed',
+      immediateAction: 'Clamp with joggle fishplates',
+      irpwmReference: 'IRPWM Para 2.6.1',
+      mode: 'Offline IRPWM',
+    },
+  ]);
+  assert.match(csv, /^Date,Timestamp,Status,Severity,Defect Type,IRPWM Code,Speed Restriction,Location,Description,Immediate Action,IRPWM Reference,Mode\r\n/);
+  assert.match(csv, /"AT Weld Fracture, LH Rail"/);
+  assert.match(csv, /"Hairline ""weld"" crack noticed"/);
+
+  // Colloquial Telugu Unicode + Tenglish Gang Diary parsing
+  const teEntry = buildOfflineDiaryEntry(
+    'కి.మీ 293/4 అప్ లైన్ లో 40 స్లీపర్లు ప్యాకింగ్ చేసాము, 6 పాండ్రోల్ క్లిప్పులు బిగించాము, వెల్డ్ దగ్గర పగులు కనిపించింది, ఎర్ర జెండాతో లుక్ అవుట్ పెట్టాము',
+    { date: '2026-11-28', dateStr: '28 November 2026', present: 24, total: 25, section: 'SKM–UPD, Vijayawada Div.' }
+  );
+  assert.equal(teEntry.date, '2026-11-28');
+  assert.equal(teEntry.section, 'SKM–UPD, Vijayawada Div.');
+  assert.match(teEntry.workDone, /PSC sleepers/i);
+  assert.match(teEntry.workDone, /km 293\/4/);
+  assert.match(teEntry.workDone, /\[Field note\] కి\.మీ 293\/4/);
+  assert.equal(/\[Field note\] కి\n/.test(teEntry.workDone), false);
+  assert.match(teEntry.materialsUsed, /ERC clips/i);
+  assert.match(teEntry.materialsUsed, /PSC sleepers/i);
+  assert.match(teEntry.defectsNoted, /weld crack/i);
+  assert.equal(teEntry.defectsNoted, teEntry.defectsObserved);
+  assert.equal(teEntry.safetyVerified, true);
+  assert.match(teEntry.safetyMeasures, /Lookout man/i);
+
+  const tenglishEntry = buildOfflineDiaryEntry(
+    '30 sleepers packing chesamu, 4 ERC clips tight chesamu, lookout red flag pettamu',
+    { date: '2026-11-28', present: 25, total: 25, section: 'SKM–UPD' }
+  );
+  assert.equal(tenglishEntry.safetyVerified, true);
+  assert.equal(tenglishEntry.defectsNoted, 'Nil reported during shift');
+  assert.match(tenglishEntry.materialsUsed, /ERC clips/i);
+
+  // LWR Thermal risk & offline IRPWM manual keyword search
+  const hotRisks = analyzeRisks({ temp: 43, railTemp: 66, humidity: 40, rainfall: 0, windSpeed: 14, windGusts: 18, upcomingRainMm: 0, upcomingRainHrs: null });
+  assert.ok(hotRisks.some(r => r.level === 'high' && /2\.9/.test(r.irpwm)));
+  assert.ok(searchManualRules('pandrol').some(r => r.id === 'erc-fastenings'));
+  assert.ok(searchManualRules('వేడి').some(r => r.id === 'hot-weather'));
+  assert.equal(matchLocalRule('GR 3.62')?.id, 'obstruction-protection');
+});

@@ -37,17 +37,23 @@ export const DEFAULT_ALERT_CFG = {
 /** Pure evaluation of one train against one worker. */
 export function evaluateTrain(worker, ts, cfg = DEFAULT_ALERT_CFG) {
   const dir = ts.dir === 'UP' ? 1 : -1;
-  const sW = (worker.sigmaM ?? 0) / 1000;
+  const sW = Math.max(0, (worker.sigmaM ?? 0) / 1000);
+  const lenKm = Math.max(0.1, Number(ts.lengthKm) || 0.5);
+  const vmax = Math.max(30, Number(ts.vmaxKmh) || 110);
+  const vNom = Math.max(20, Number(ts.speedKmh) || vmax);
   const dLead = (worker.km - ts.kmLead) * dir - sW;
   const dLag = (worker.km - ts.kmLag) * dir + sW;
   const dNom = (worker.km - ts.kmNominal) * dir;
-  const passed = dLag < -(ts.lengthKm + cfg.passBufferKm);
-  const atSite = !passed && dLead <= 0;
-  const etaLowerS = dLead > 0 ? (dLead / ts.vmaxKmh) * 3600 : 0;
-  const etaNomS = dNom > 0 ? (dNom / Math.max(20, ts.speedKmh || ts.vmaxKmh)) * 3600 : 0;
+  const passed = dLag < -(lenKm + cfg.passBufferKm);
+  const unconfirmedOverdue = !ts.confirmed && dNom < -(lenKm + cfg.passBufferKm + sW);
+  const atSite = !passed && !unconfirmedOverdue && dLead <= 0;
+  const receding = passed || (ts.confirmed && dNom < -(lenKm + cfg.passBufferKm) && dLead <= 0 && dLag < 0);
+  const vector = receding ? 'RECEDING' : atSite ? 'AT_SITE' : dLead > 0 ? 'APPROACHING' : 'OVERDUE';
+  const etaLowerS = dLead > 0 ? (dLead / vmax) * 3600 : 0;
+  const etaNomS = dNom > 0 ? (dNom / vNom) * 3600 : 0;
 
   let level;
-  if (passed) level = ts.confirmed ? LEVEL.CLEARED : LEVEL.NONE;
+  if (passed || (receding && dLag < -cfg.passBufferKm)) level = ts.confirmed ? LEVEL.CLEARED : LEVEL.NONE;
   else if (!ts.confirmed && dLead <= 0) level = LEVEL.AMBIENT;       // "may still come" (delay unknown)
   else if (atSite || etaLowerS <= cfg.clearanceS || dLead <= cfg.criticalKm) level = LEVEL.CRITICAL;
   else if (etaLowerS <= cfg.warnS || dLead <= cfg.warnKm) level = LEVEL.WARN;
@@ -56,7 +62,7 @@ export function evaluateTrain(worker, ts, cfg = DEFAULT_ALERT_CFG) {
   else level = LEVEL.NONE;
 
   if (!ts.confirmed && level > cfg.unconfirmedMaxLevel) level = cfg.unconfirmedMaxLevel;
-  return { level, atSite, passed, dLeadKm: dLead, dLagKm: dLag, dNomKm: dNom, etaLowerS, etaNomS };
+  return { level, atSite, passed, receding, vector, dLeadKm: dLead, dLagKm: dLag, dNomKm: dNom, etaLowerS, etaNomS };
 }
 
 export const isActiveLine = (line, mode) => mode === TRACK_MODE.BOTH || line === 'BOTH' || line === mode;
@@ -77,13 +83,16 @@ export class ThreatEngine {
     const events = [];
     const rows = [];
     const seen = new Set();
-    for (const ts of trainStates) {
+    for (const ts of (trainStates || [])) {
       seen.add(ts.key);
       const ev = evaluateTrain(worker, ts, this.cfg);
       const m = this.mem.get(ts.key) ?? { level: LEVEL.NONE, lowerSince: null, peak: LEVEL.NONE, clearedAnnounced: false, adjacentAnnounced: false };
       let level = m.level;
       if (ev.level === LEVEL.CLEARED) {
         if (m.peak >= LEVEL.WARN && !m.clearedAnnounced) { events.push({ type: 'CLEARED', ts }); m.clearedAnnounced = true; }
+        level = LEVEL.CLEARED; m.lowerSince = null;
+      } else if (m.level === LEVEL.CLEARED && ev.dNomKm <= 0.5) {
+        // Directional receding lock: GPS noise or expanding σ cannot re-trigger an already-cleared receding train
         level = LEVEL.CLEARED; m.lowerSince = null;
       } else if (ev.level >= m.level || m.level === LEVEL.CLEARED) {
         level = ev.level; m.lowerSince = null;
@@ -93,7 +102,7 @@ export class ThreatEngine {
       }
       m.level = level; m.peak = Math.max(m.peak, level);
       const active = isActiveLine(ts.line, this.mode);
-      if (!active && level === LEVEL.CRITICAL && !ev.passed && !m.adjacentAnnounced) {
+      if (!active && level === LEVEL.CRITICAL && !ev.passed && !ev.receding && !m.adjacentAnnounced) {
         events.push({ type: 'ADJACENT', ts }); m.adjacentAnnounced = true;
       }
       this.mem.set(ts.key, m);
@@ -101,7 +110,13 @@ export class ThreatEngine {
     }
     for (const k of this.mem.keys()) if (!seen.has(k)) this.mem.delete(k);
 
-    const score = r => (r.active ? 1e7 : 0) + Math.max(0, r.level) * 1e6 + (1e6 - Math.min(999999, r.etaLowerS));
+    const score = r => {
+      const approachingBonus = (r.dLeadKm > 0 || r.atSite) ? 1e5 : 0;
+      const etaPenalty = (r.dLeadKm > 0 || r.atSite)
+        ? Math.min(99999, r.etaLowerS || 0)
+        : Math.min(99999, Math.abs(r.dNomKm || 0) * 100);
+      return (r.active ? 1e7 : 0) + Math.max(0, r.level) * 1e6 + approachingBonus + (1e5 - etaPenalty);
+    };
     const visible = rows.filter(r => r.level > LEVEL.NONE).sort((a, b) => score(b) - score(a));
     const threats = visible.filter(r => r.active && r.level >= LEVEL.PREPARE);
     const ambient = visible.filter(r => !(r.active && r.level >= LEVEL.PREPARE));
@@ -198,10 +213,20 @@ export class VoiceManager {
 
 /** One AudioContext, one pattern at a time. */
 export class SirenManager {
-  constructor() { this.ctx = null; this.level = LEVEL.NONE; this.timer = null; this.muteUntil = 0; }
+  constructor() { this.ctx = null; this.level = LEVEL.NONE; this.timer = null; this.subTimers = []; this.muteUntil = 0; }
   unlock() { // must be called from a user gesture
     this.ctx ??= new (globalThis.AudioContext || globalThis.webkitAudioContext)();
     if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+  _clearTimers() {
+    clearInterval(this.timer);
+    this.timer = null;
+    for (const id of this.subTimers) clearTimeout(id);
+    this.subTimers.length = 0;
+  }
+  _later(ms, expectLevel, fn) {
+    const id = setTimeout(() => { if (this.level === expectLevel) fn(); }, ms);
+    this.subTimers.push(id);
   }
   _tone(freqA, freqB, durS, gain = 0.9) {
     if (!this.ctx) return;
@@ -216,11 +241,11 @@ export class SirenManager {
   set(level, { muted = false } = {}) {
     const eff = muted ? Math.min(level, LEVEL.PREPARE) : level;
     if (eff === this.level) return;
-    this.level = eff; clearInterval(this.timer); this.timer = null;
+    this.level = eff; this._clearTimers();
     const P = {
-      [LEVEL.PREPARE]:  { every: 0,    fn: () => { this._tone(880, 880, 0.18); setTimeout(() => this._tone(880, 880, 0.18), 300); } },
-      [LEVEL.WARN]:     { every: 4000, fn: () => [0, 350, 700].forEach(d => setTimeout(() => this._tone(1000, 1000, 0.22), d)) },
-      [LEVEL.CRITICAL]: { every: 1200, fn: () => { this._tone(700, 1400, 0.55); setTimeout(() => this._tone(1400, 700, 0.55), 600); } },
+      [LEVEL.PREPARE]:  { every: 0,    fn: () => { this._tone(880, 880, 0.18); this._later(300, eff, () => this._tone(880, 880, 0.18)); } },
+      [LEVEL.WARN]:     { every: 4000, fn: () => [0, 350, 700].forEach(d => this._later(d, eff, () => this._tone(1000, 1000, 0.22))) },
+      [LEVEL.CRITICAL]: { every: 1200, fn: () => { this._tone(700, 1400, 0.55); this._later(600, eff, () => this._tone(1400, 700, 0.55)); } },
     }[eff];
     if (!P) return;
     P.fn(); if (P.every) this.timer = setInterval(P.fn, P.every);

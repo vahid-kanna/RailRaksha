@@ -195,10 +195,9 @@ export function buildLiveCorridorState(entry, refNowMs) {
       phase = 'RUNNING';
     }
   } else {
-    // Anchor positions from corridor station boards (SKM / OGL / NLR), preferring 2-station bracketing interpolation
+    // Anchor positions from corridor station boards (ordered south->north), preferring 2-station bracketing interpolation
     const pts = [];
-    for (const code of ['NLR', 'SKM', 'OGL']) {
-      const b = entry.boards?.[code];
+    for (const [code, b] of Object.entries(entry.boards || {})) {
       if (!b) continue;
       const rawTime = b.type === 'departed' && b.departedAt
         ? b.departedAt
@@ -338,7 +337,11 @@ export class LiveTrainService {
    * Embedded 53-train timetable serves cleanly as offline / quota / dead-zone fallback.
    */
   getTrainStates(workerKm, nowMs = Date.now()) {
-    const maxSnapAgeMs = this.corridorSnapshot?.stale ? CFG.liveFreshMaxAgeS * 1000 : 360000;
+    const maxSnapAgeMs = this.corridorSnapshot?.stale
+      ? CFG.liveFreshMaxAgeS * 1000
+      : this.corridorSnapshot?.quotaSaver
+      ? 660000
+      : 360000;
     const liveFresh = this.preferLive
       && this.corridorSnapshot
       && Array.isArray(this.corridorSnapshot.trains)
@@ -378,8 +381,9 @@ export class LiveTrainService {
   }
 
   feedStatus(nowMs = Date.now()) {
-    if (!this.preferLive) return { state: 'OFFLINE', ageS: Infinity, liveCount: 0, quotaExceeded: false };
+    if (!this.preferLive) return { state: 'OFFLINE', ageS: Infinity, liveCount: 0, quotaExceeded: false, source: null };
     const liveCount = this.corridorSnapshot?.trains?.length || 0;
+    const source = this.corridorSnapshot?.source || null;
     if (this.quotaExceeded) {
       const hasFreshStale = Boolean(
         this.corridorSnapshot?.stale
@@ -394,12 +398,13 @@ export class LiveTrainService {
         liveCount: hasFreshStale ? liveCount : 0,
         quotaExceeded: true,
         stale: hasFreshStale,
+        source,
       };
     }
-    if (!this.lastSuccessAt) return { state: 'SCHEDULE', ageS: Infinity, liveCount: 0, quotaExceeded: false };
+    if (!this.lastSuccessAt) return { state: 'SCHEDULE', ageS: Infinity, liveCount: 0, quotaExceeded: false, source: null };
     const ageS = (nowMs - this.lastSuccessAt) / 1000;
-    if (ageS < 180) return { state: 'LIVE', ageS, liveCount, quotaExceeded: false };
-    if (ageS < 420) return { state: 'STALE', ageS, liveCount, quotaExceeded: false };
-    return { state: 'SCHEDULE', ageS, liveCount: 0, quotaExceeded: false };
+    if (ageS < 180) return { state: 'LIVE', ageS, liveCount, quotaExceeded: false, source };
+    if (ageS < 420) return { state: 'STALE', ageS, liveCount, quotaExceeded: false, source };
+    return { state: 'SCHEDULE', ageS, liveCount: 0, quotaExceeded: false, source: null };
   }
 }

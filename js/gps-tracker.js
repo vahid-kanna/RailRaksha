@@ -52,6 +52,7 @@ export class AlongTrackKalman {
   }
   /** @returns {boolean} accepted */
   update(zM, sigmaM, tMs) {
+    if (!Number.isFinite(zM) || !Number.isFinite(sigmaM) || sigmaM <= 0) return false;
     if (this.s == null) { this.s = zM; this.v = 0; this.P = [[sigmaM ** 2, 0], [0, 4]]; this.t = tMs; return true; }
     this.predict(tMs);
     const R = sigmaM ** 2, S = this.P[0][0] + R, y = zM - this.s;
@@ -103,13 +104,24 @@ export class GpsTracker extends EventTarget {
     this.storage?.setItem('rr.manualBeat', JSON.stringify(this.manual));
     this.tick();
   }
-  nudgeManual(deltaKm) { if (this.manual) this.setManualBeat(this.manual.code, this.manual.km - STATION_BY_CODE[this.manual.code].km + deltaKm); }
+  nudgeManual(deltaKm) {
+    if (!this.manual || !STATION_BY_CODE[this.manual.code]) return;
+    this.setManualBeat(this.manual.code, this.manual.km - STATION_BY_CODE[this.manual.code].km + deltaKm);
+  }
   clearManualBeat() { this.manual = null; this.storage?.removeItem('rr.manualBeat'); this.tick(); }
 
-  _loadManual() { try { return JSON.parse(this.storage?.getItem('rr.manualBeat')) || null; } catch { return null; } }
+  _loadManual() {
+    try {
+      const parsed = JSON.parse(this.storage?.getItem('rr.manualBeat'));
+      if (parsed && STATION_BY_CODE[parsed.code] && Number.isFinite(parsed.km)) return parsed;
+      return null;
+    } catch { return null; }
+  }
 
   _onFix(p) {
-    const { latitude: lat, longitude: lon, accuracy: accM = 50 } = p.coords;
+    const { latitude: lat, longitude: lon, accuracy } = p?.coords || {};
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const accM = Number.isFinite(accuracy) && accuracy > 0 ? accuracy : 50;
     const t = p.timestamp || this.now();
     const hint = this.kf.s != null ? this.kf.s / 1000 : this.manual?.km ?? null;
     const proj = projectToTrack(lat, lon, hint);

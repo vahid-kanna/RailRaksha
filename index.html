@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=JetBrains+Mono:wght@500;600&family=Karla:wght@400;500;700&family=Noto+Sans+Telugu:wght@500;600;700&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="/css/style.css?v=8.2" />
+  <link rel="stylesheet" href="/css/style.css?v=8.3" />
 </head>
 <body data-level="NONE" data-armed="false" data-track="BOTH">
   <div id="app" class="app-shell">
@@ -27,6 +27,7 @@
     <header class="top-bar" role="banner">
       <div class="top-bar-left">
         <span class="brand-name">RailRaksha</span>
+        <span class="brand-tag" aria-label="South Central Railway SKM-UPD section">SCR · SKM–UPD</span>
         <button type="button" class="weather-chip" id="top-weather-chip" title="Open Weather &amp; Rail Thermal Monitor" aria-label="Ambient temperature, tap for Weather">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
           <span id="top-weather-temp">--°</span>
@@ -100,12 +101,14 @@
               <div class="dial-stage">
                 <div class="metal-dial" id="proximity-dial">
                   <div class="dial-knurl" aria-hidden="true"></div>
+                  <span class="dial-led" id="dial-led" aria-hidden="true"></span>
                   <div class="dial-well">
-                    <svg class="dial-svg" viewBox="0 0 100 100" aria-hidden="true">
-                      <circle class="dial-track" cx="50" cy="50" r="44"></circle>
-                      <circle class="dial-arc" id="dial-arc" cx="50" cy="50" r="44" stroke-dasharray="276.46" stroke-dashoffset="276.46"></circle>
+                    <svg class="dial-svg" viewBox="0 0 200 200" aria-hidden="true">
+                      <g class="dial-ticks" id="dial-ticks"></g>
+                      <circle class="dial-inner-ring" cx="100" cy="100" r="73"></circle>
+                      <circle class="dial-track" cx="100" cy="100" r="84"></circle>
+                      <circle class="dial-arc" id="dial-arc" cx="100" cy="100" r="84" stroke-dasharray="527.79" stroke-dashoffset="527.79"></circle>
                     </svg>
-                    <span class="dial-led" id="dial-led" aria-hidden="true"></span>
                     <div class="dial-readout">
                       <div class="dial-num" id="dial-num">CLEAR</div>
                       <div class="dial-caption" id="dial-caption">SKM · KM 293.0</div>
@@ -258,7 +261,7 @@
                   </div>
                   <div class="inst-titles">
                     <div class="inst-name">Lookout Protocol</div>
-                    <div class="inst-sub">Unscheduled freight runs outside NTES — verify visually</div>
+                    <div class="inst-sub">Outside NTES freight — maintain visual lookout</div>
                   </div>
                 </div>
                 <div class="ink-pill" id="guard-pill">
@@ -277,13 +280,14 @@
                   <div class="meter-delta" id="meter-delta">Syncing OGL · SKM · NLR boards</div>
                 </div>
                 <svg class="meter-sparkline" id="corridor-sparkline" viewBox="0 0 120 44" aria-label="Upcoming train density across next 7 time windows">
-                  <rect x="2"  y="26" width="12" height="16" rx="3" class="spark-bar"></rect>
-                  <rect x="19" y="18" width="12" height="24" rx="3" class="spark-bar"></rect>
-                  <rect x="36" y="22" width="12" height="20" rx="3" class="spark-bar"></rect>
-                  <rect x="53" y="12" width="12" height="30" rx="3" class="spark-bar"></rect>
-                  <rect x="70" y="20" width="12" height="22" rx="3" class="spark-bar"></rect>
-                  <rect x="87" y="14" width="12" height="28" rx="3" class="spark-bar"></rect>
-                  <rect x="104" y="16" width="12" height="26" rx="3" class="spark-bar active"></rect>
+                  <line x1="2" y1="42" x2="116" y2="42" class="spark-baseline"></line>
+                  <rect x="2"  y="26" width="12" height="16" rx="1.5" class="spark-bar"></rect>
+                  <rect x="19" y="18" width="12" height="24" rx="1.5" class="spark-bar"></rect>
+                  <rect x="36" y="22" width="12" height="20" rx="1.5" class="spark-bar"></rect>
+                  <rect x="53" y="12" width="12" height="30" rx="1.5" class="spark-bar"></rect>
+                  <rect x="70" y="20" width="12" height="22" rx="1.5" class="spark-bar"></rect>
+                  <rect x="87" y="14" width="12" height="28" rx="1.5" class="spark-bar"></rect>
+                  <rect x="104" y="16" width="12" height="26" rx="1.5" class="spark-bar active"></rect>
                 </svg>
               </div>
 
@@ -818,17 +822,24 @@
               </div>
             </div>
             <div class="field-group">
-              <label for="setting-railradar_key">Personal RailRadar Key</label>
+              <label for="setting-irctc_dev_key">Personal irctc.dev Key (10k free)</label>
               <div class="pw-row">
-                <input id="setting-railradar_key" type="password" class="hw-input" placeholder="Leave blank to use Cloudflare Edge" />
-                <button type="button" class="pill-mini btn-toggle-visibility" data-target="setting-railradar_key">Show</button>
+                <input id="setting-irctc_dev_key" type="password" class="hw-input" placeholder="Leave blank to use Cloudflare Edge" />
+                <button type="button" class="pill-mini btn-toggle-visibility" data-target="setting-irctc_dev_key">Show</button>
               </div>
             </div>
             <div class="field-group">
               <label for="setting-railcore_key">Personal RailCore Key (Optional 500/mo free)</label>
               <div class="pw-row">
-                <input id="setting-railcore_key" type="password" class="hw-input" placeholder="Leave blank for RailRadar / Edge default" />
+                <input id="setting-railcore_key" type="password" class="hw-input" placeholder="Leave blank for Edge / irctc.dev default" />
                 <button type="button" class="pill-mini btn-toggle-visibility" data-target="setting-railcore_key">Show</button>
+              </div>
+            </div>
+            <div class="field-group">
+              <label for="setting-railradar_key">Personal RailRadar Key (100/mo free)</label>
+              <div class="pw-row">
+                <input id="setting-railradar_key" type="password" class="hw-input" placeholder="Leave blank to use Cloudflare Edge" />
+                <button type="button" class="pill-mini btn-toggle-visibility" data-target="setting-railradar_key">Show</button>
               </div>
             </div>
             <div class="field-group">
@@ -851,7 +862,7 @@
             </button>
           </div>
 
-          <p class="attribution-note">RailRaksha v8.2 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
+          <p class="attribution-note">RailRaksha v8.3 · Built by Shaik Vahid Basha · IIT Madras · SKM–UPD Vijayawada Division</p>
         </div>
       </div>
     </div>
@@ -872,6 +883,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/app.js?v=8.2"></script>
+  <script type="module" src="/js/app.js?v=8.3"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 /**
- * RailRaksha — Central Configuration v8.1 (config.js)
+ * RailRaksha — Central Configuration v8.3 (config.js)
  *
  * Security invariant: Zero secret API keys in client-side code.
  * Live trains (/api/corridor-live, /api/live-status) and AI (/api/chat)
@@ -12,7 +12,8 @@ export const DEFAULT_CONFIG = {
   theme:        'light',    // 'light' (Cool Titanium) | 'night' (Machined Gunmetal)
   voice_lang:   'te+en',    // 'te+en' | 'en' | 'te'
   voice_enabled: '1',       // '1' | '0'
-  prefer_live:   '1',       // '1' (Live RailRadar first) | '0' (Offline schedule only)
+  prefer_live:   '1',       // '1' (Live irctc.dev / RailCore / RailRadar first) | '0' (Offline schedule only)
+  quota_saver:   '0',       // '1' (Single-anchor OGL + 10 min cache) | '0' (Standard OGL + NLR)
 
   // AI Provider (optional personal override; blank = Cloudflare /api/chat proxy)
   ai_provider:  'openai_compatible',
@@ -21,6 +22,7 @@ export const DEFAULT_CONFIG = {
   ai_api_key:   '',
 
   // Live Train Tracking (optional personal overrides; blank = Cloudflare Edge secrets)
+  irctc_dev_key: '',
   railradar_key: '',
   railcore_key:  '',
 
@@ -65,7 +67,7 @@ export function getConfigNum(key) {
 export function applyDefaultsOnce() {
   try {
     const version = localStorage.getItem('_config_version');
-    if (version !== '8.1') {
+    if (version !== '8.3') {
       // Upgrade legacy dark/daylight themes to Cool Titanium light default on v8.0+ transition
       const prevTheme = localStorage.getItem('theme');
       if (!prevTheme || prevTheme === 'dark' || prevTheme === 'daylight') {
@@ -93,7 +95,7 @@ export function applyDefaultsOnce() {
       if (legacyLang && !localStorage.getItem('voice_lang')) {
         localStorage.setItem('voice_lang', legacyLang);
       }
-      localStorage.setItem('_config_version', '8.1');
+      localStorage.setItem('_config_version', '8.3');
     }
 
     for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {

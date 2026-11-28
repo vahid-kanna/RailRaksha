@@ -24,13 +24,13 @@ export const OFFLINE_DEFECT_PRESETS = [
   },
   {
     id: 'weld-crack',
-    defectType: 'Cracked Rail / AT Weld',
+    defectType: 'AT Weld Fracture / Cracked Rail',
     severity: 'HIGH',
     irpwmCode: 'WC-02',
     speedRestriction: '30 km/h Caution Order',
     irpwmReference: 'IRPWM Para 2.6.1 / USFD Manual',
     immediateAction: 'Clamp with joggle fishplates and C-clamps immediately. Impose 30 km/h caution order and report to PWI/USFD team.',
-    description: 'Visible hairline or progressive crack at rail or Alumino-Thermic (AT) weld joint.',
+    description: 'Visible hairline or progressive fracture/crack at rail or Alumino-Thermic (AT) weld joint.',
   },
   {
     id: 'sun-kink',
@@ -44,13 +44,13 @@ export const OFFLINE_DEFECT_PRESETS = [
   },
   {
     id: 'missing-erc',
-    defectType: 'Missing / Loose ERC Fastenings',
+    defectType: 'Missing / Loose Pandrol (ERC) Clips',
     severity: 'MEDIUM',
     irpwmCode: 'FN-03',
     speedRestriction: 'None (replace immediately)',
     irpwmReference: 'IRPWM Para 3.3',
-    immediateAction: 'Re-drive loose Elastic Rail Clips (ERC), replace missing liners/rubber pads, and inspect adjoining 10 sleepers.',
-    description: 'Missing or unseated Elastic Rail Clips / GFN liners reducing rail-seat toe load.',
+    immediateAction: 'Re-drive loose Elastic Rail Clips (Pandrol / ERC), replace missing liners/rubber pads, and inspect adjoining 10 sleepers.',
+    description: 'Missing or unseated Elastic Rail Clips (Pandrol) / GFN liners reducing rail-seat toe load.',
   },
   {
     id: 'broken-sleeper',
@@ -74,13 +74,13 @@ export const OFFLINE_DEFECT_PRESETS = [
   },
   {
     id: 'ballast-void',
-    defectType: 'Ballast Void / Pumping Joint',
+    defectType: 'Ballast Degradation / Pumping Void',
     severity: 'MEDIUM',
     irpwmCode: 'BV-06',
     speedRestriction: '45 km/h if severe settlement',
     irpwmReference: 'IRPWM Para 2.5',
     immediateAction: 'Pack affected sleepers with clean ballast, improve shoulder drainage, and log for tamping machine attention.',
-    description: 'Mud pumping, fouled ballast, or void under sleeper rail seat causing track settlement.',
+    description: 'Mud pumping, fouled/degraded ballast, or void under sleeper rail seat causing track settlement.',
   },
   {
     id: 'monsoon-scour',
@@ -93,6 +93,64 @@ export const OFFLINE_DEFECT_PRESETS = [
     description: 'Heavy waterlogging, embankment erosion, or formation scour observed during rainfall.',
   },
 ];
+
+export const EXTENDED_OFFLINE_PRESETS = [
+  {
+    id: 'rail-corrosion',
+    defectType: 'Rail Corrosion / Foot & Web Rust',
+    severity: 'HIGH',
+    irpwmCode: 'RC-07',
+    speedRestriction: '45 km/h if >1.5 mm section loss',
+    irpwmReference: 'IRPWM Para 2.7 & Para 3.3',
+    immediateAction: 'Wire-brush scale, measure web/foot thickness loss, apply anti-corrosive bituminous/zinc coating, and report coastal pitting to PWI.',
+    description: 'Severe coastal saline corrosion, pitting, or flaking observed along rail web/foot or ERC seats.',
+  },
+  {
+    id: 'fishplate-bolt',
+    defectType: 'Cracked Fishplate / Missing Bolt',
+    severity: 'CRITICAL',
+    irpwmCode: 'FP-08',
+    speedRestriction: 'Stop Dead until clamped / bolted',
+    irpwmReference: 'IRPWM Para 2.6.4 & GR 3.62',
+    immediateAction: 'Stop trains if fishplate is fractured or >1 bolt missing on a side. Fit emergency joggle clamp/bolts and impose 30 km/h caution until replaced.',
+    description: 'Fractured fishplate or missing/sheared fishbolts at insulated or mechanical rail joint.',
+  },
+];
+
+export const ALL_OFFLINE_DEFECT_PRESETS = [...OFFLINE_DEFECT_PRESETS, ...EXTENDED_OFFLINE_PRESETS];
+
+/** Deterministic offline IRPWM civil defect classifier (supports preset IDs and free-text field notes). */
+export function classifyOfflineDefect(presetId, note = '', hasPhoto = false) {
+  const cleanNote = String(note || '').trim();
+  const hay = `${presetId || ''} ${cleanNote}`.toLowerCase();
+  let preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === presetId);
+  if (!preset) {
+    if (/corros|rust|pitting|flak|తుప్పు/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'rail-corrosion');
+    else if (/fish\s?plate|fishbolt|bolt/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'fishplate-bolt');
+    else if (/weld|thermit|విరిగ|పగుల/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'weld-crack');
+    else if (/fracture|broken rail/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'rail-fracture');
+    else if (/pandrol|erc|clip|liner|pad/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'missing-erc');
+    else if (/sleeper|psc/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'broken-sleeper');
+    else if (/ballast|void|pumping|mud/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'ballast-void');
+    else if (/buckle|kink|thermal/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'sun-kink');
+    else if (/gauge|1676/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'gauge-variation');
+    else if (/scour|flood|waterlog|monsoon/.test(hay)) preset = ALL_OFFLINE_DEFECT_PRESETS.find(p => p.id === 'monsoon-scour');
+    else preset = ALL_OFFLINE_DEFECT_PRESETS[0];
+  }
+  return {
+    defectType: preset.defectType,
+    severity: preset.severity,
+    irpwmCode: preset.irpwmCode,
+    confidence: 'FIELD VERIFIED',
+    description: cleanNote ? `${preset.description} Field note: ${cleanNote}` : preset.description,
+    immediateAction: preset.immediateAction,
+    reportingRequired: true,
+    speedRestriction: preset.speedRestriction,
+    irpwmReference: preset.irpwmReference,
+    generalInfo: hasPhoto ? 'Photo attached locally on device' : 'Manual field observation (no photo)',
+    mode: 'Offline IRPWM',
+  };
+}
 
 let capturedImageBase64 = null;
 let capturedImageMime = 'image/jpeg';
@@ -154,7 +212,7 @@ function setHidden(el, hide) {
 function renderOfflinePresets() {
   const sel = elements.offlineDefectSelect;
   if (!sel) return;
-  sel.innerHTML = OFFLINE_DEFECT_PRESETS.map(p =>
+  sel.innerHTML = ALL_OFFLINE_DEFECT_PRESETS.map(p =>
     `<option value="${p.id}">${p.defectType} (${p.severity} · ${p.irpwmCode})</option>`
   ).join('');
 }
@@ -171,6 +229,10 @@ function toggleManualPanel(forceOpen = null) {
 function handleFileSelect(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  if (file.type && !file.type.startsWith('image/')) {
+    showToast('Please select a valid track photo image', 'warn');
+    return;
+  }
   capturedImageMime = 'image/jpeg';
   const reader = new FileReader();
   reader.onload = (ev) => {
@@ -255,15 +317,15 @@ If the photo is NOT railway-related (person, food, random object, selfie, road v
 
 If the photo DOES show railway track/infrastructure, respond ONLY in this exact JSON:
 {
-  "defectType": "Concise defect name (e.g. Cracked Rail Weld, Broken PSC Sleeper, Missing ERC Clip, Gauge Widening, Rail Corrosion, Broken Fish Plate, Ballast Void, No Defect Visible)",
+  "defectType": "Concise defect name (e.g. AT Weld Fracture, Complete Rail Fracture, Broken PSC Sleeper, Missing Pandrol (ERC) Clip, Gauge Widening, Rail Corrosion, Cracked Fishplate, Ballast Degradation / Void, LWR Sun Kink, No Defect Visible)",
   "severity": "CRITICAL | HIGH | MEDIUM | LOW",
   "irpwmCode": "Relevant IRPWM code or N/A",
   "confidence": "HIGH | MEDIUM | LOW",
   "description": "Concise technical observation of the track condition",
   "immediateAction": "Immediate field action for the Gang Mate",
   "reportingRequired": true,
-  "speedRestriction": "Recommended speed restriction (e.g. Stop Dead, 20 km/h, 30 km/h, or None)",
-  "irpwmReference": "Relevant IRPWM paragraph or N/A",
+  "speedRestriction": "Recommended speed restriction (e.g. Stop Dead, 30 km/h Caution Order, or None)",
+  "irpwmReference": "Relevant IRPWM paragraph (e.g. IRPWM Para 2.6.1, Para 3.3, GR 3.62)",
   "generalInfo": "Brief general context (e.g. Broad Gauge track with PSC sleepers)"
 }`;
 
@@ -292,29 +354,41 @@ If the photo DOES show railway track/infrastructure, respond ONLY in this exact 
   }
 }
 
-function submitOfflineDefect() {
+async function submitOfflineDefect() {
   const presetId = elements.offlineDefectSelect?.value;
-  const preset = OFFLINE_DEFECT_PRESETS.find(p => p.id === presetId) || OFFLINE_DEFECT_PRESETS[0];
   const note = elements.offlineDefectNotes?.value?.trim();
-  const analysis = {
-    defectType: preset.defectType,
-    severity: preset.severity,
-    irpwmCode: preset.irpwmCode,
-    confidence: 'FIELD VERIFIED',
-    description: note ? `${preset.description} Field note: ${note}` : preset.description,
-    immediateAction: preset.immediateAction,
-    reportingRequired: true,
-    speedRestriction: preset.speedRestriction,
-    irpwmReference: preset.irpwmReference,
-    generalInfo: capturedImageBase64 ? 'Photo attached locally on device' : 'Manual field observation (no photo)',
-    mode: 'Offline IRPWM',
-  };
-  displayAnalysis(analysis);
+  const analysis = classifyOfflineDefect(presetId, note, Boolean(capturedImageBase64));
+  const loc = getCurrentLocationText();
+  const timestamp = new Date().toISOString();
+  let savedId = '';
+  try {
+    const id = await saveDefectReport({
+      defectType: analysis.defectType,
+      severity: analysis.severity,
+      description: analysis.description,
+      gps: loc,
+      timestamp,
+      irpwmCode: analysis.irpwmCode,
+      speedRestriction: analysis.speedRestriction,
+      immediateAction: analysis.immediateAction,
+      irpwmReference: analysis.irpwmReference,
+      mode: analysis.mode,
+      status: 'OPEN',
+    });
+    if (id != null) savedId = String(id);
+    await loadDefectHistory();
+  } catch {}
+  displayAnalysis({ ...analysis, gps: loc, timestamp }, savedId);
   toggleManualPanel(false);
-  showToast('Offline IRPWM classification ready — tap Save & Share', 'ok');
+  showToast('Offline IRPWM classification saved — tap Share via WhatsApp to dispatch', 'ok');
 }
 
-function displayAnalysis(analysis) {
+function displayAnalysis(rawAnalysis, savedId = '') {
+  const sev = String(rawAnalysis.severity || 'MEDIUM').trim().toUpperCase();
+  const analysis = {
+    ...rawAnalysis,
+    severity: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].includes(sev) ? sev : 'MEDIUM',
+  };
   setHidden(elements.defectAnalysisCard, false);
 
   if (elements.defectTypeBadge) {
@@ -329,13 +403,13 @@ function displayAnalysis(analysis) {
     elements.defectTypeBadge.innerHTML = `${severityIcon(analysis.severity)} <span>${escapeHtml(analysis.defectType)}</span>`;
   }
 
-  const loc = getCurrentLocationText();
+  const loc = analysis.gps || getCurrentLocationText();
   setText(elements.detailSeverity, analysis.severity);
   setText(elements.detailConfidence, `${analysis.confidence || '—'}${analysis.mode ? ` · ${analysis.mode}` : ''}`);
   setText(elements.detailIRPWM, analysis.irpwmCode);
   setText(elements.detailSpeed, analysis.speedRestriction);
   setText(elements.detailGPS, loc);
-  setText(elements.detailTime, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+  setText(elements.detailTime, new Date(analysis.timestamp || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
   setText(elements.detailDescription, analysis.description);
   setText(elements.recommendedAction, analysis.immediateAction);
   if (elements.irpwmReference) elements.irpwmReference.textContent = `Reference: ${analysis.irpwmReference || 'IRPWM'}`;
@@ -351,10 +425,11 @@ function displayAnalysis(analysis) {
   }
 
   if (elements.defectAnalysisCard) {
+    elements.defectAnalysisCard.dataset.savedId = savedId || '';
     elements.defectAnalysisCard.dataset.analysis = JSON.stringify({
       ...analysis,
       gps: loc,
-      timestamp: new Date().toISOString(),
+      timestamp: analysis.timestamp || new Date().toISOString(),
     });
   }
 
@@ -391,19 +466,26 @@ async function shareReport() {
   const analysis = JSON.parse(card.dataset.analysis);
   const reportText = generateReportText(analysis);
 
-  await saveDefectReport({
-    defectType: analysis.defectType,
-    severity: analysis.severity,
-    description: analysis.description,
-    gps: analysis.gps,
-    timestamp: analysis.timestamp,
-    irpwmCode: analysis.irpwmCode,
-    speedRestriction: analysis.speedRestriction,
-    immediateAction: analysis.immediateAction,
-    irpwmReference: analysis.irpwmReference,
-    mode: analysis.mode || 'Field',
-    status: 'REPORTED',
-  });
+  const existingId = Number(card.dataset.savedId);
+  const updated = Number.isFinite(existingId) && existingId > 0
+    ? await updateDefectStatus(existingId, 'REPORTED')
+    : null;
+  if (!updated) {
+    const newId = await saveDefectReport({
+      defectType: analysis.defectType,
+      severity: analysis.severity,
+      description: analysis.description,
+      gps: analysis.gps,
+      timestamp: analysis.timestamp,
+      irpwmCode: analysis.irpwmCode,
+      speedRestriction: analysis.speedRestriction,
+      immediateAction: analysis.immediateAction,
+      irpwmReference: analysis.irpwmReference,
+      mode: analysis.mode || 'Field',
+      status: 'REPORTED',
+    });
+    if (newId != null) card.dataset.savedId = String(newId);
+  }
   await loadDefectHistory();
 
   if (navigator.share) {
@@ -513,12 +595,7 @@ function csvCell(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-async function exportDefectsCsv() {
-  const reports = await getDefectReports();
-  if (reports.length === 0) {
-    showToast('No defect reports to export', 'warn');
-    return;
-  }
+export function buildDefectsCsv(reports = []) {
   const headers = [
     'Date',
     'Timestamp',
@@ -533,7 +610,7 @@ async function exportDefectsCsv() {
     'IRPWM Reference',
     'Mode',
   ];
-  const rows = reports.map(r => [
+  const rows = (reports || []).map(r => [
     r.date || getISTDateISO(r.createdAt || r.timestamp || Date.now()),
     r.timestamp || r.createdAt || '',
     r.status || 'OPEN',
@@ -547,7 +624,16 @@ async function exportDefectsCsv() {
     r.irpwmReference || '',
     r.mode || '',
   ]);
-  const csv = [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  return [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+
+async function exportDefectsCsv() {
+  const reports = await getDefectReports();
+  if (reports.length === 0) {
+    showToast('No defect reports to export', 'warn');
+    return;
+  }
+  const csv = buildDefectsCsv(reports);
   downloadTextFile(`railraksha-defects-${getISTDateISO()}.csv`, csv, 'text/csv;charset=utf-8');
   showToast(`Exported ${reports.length} defect report(s)`, 'ok');
 }
@@ -570,6 +656,7 @@ function resetDefectForm() {
   if (elements.defectAnalysisCard) {
     setHidden(elements.defectAnalysisCard, true);
     delete elements.defectAnalysisCard.dataset.analysis;
+    delete elements.defectAnalysisCard.dataset.savedId;
   }
 }
 

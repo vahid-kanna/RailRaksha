@@ -40,6 +40,7 @@ export function initWeatherAlert(els) {
   elements = els;
   loadWeatherData();
   elements.btnRefreshWeather?.addEventListener('click', () => loadWeatherData(true));
+  window.addEventListener('railraksha:settings-updated', () => loadWeatherData(false));
 }
 
 function getTargetCoords() {
@@ -60,6 +61,7 @@ function getTargetCoords() {
  * Coastal Andhra Pradesh (SCR Zone III): midday direct sun can heat steel 20–24°C above ambient.
  */
 export function estimateRailTempC(ambientC, now = new Date()) {
+  const amb = Number.isFinite(Number(ambientC)) ? Number(ambientC) : 30;
   const istHour = Number(
     new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false }).format(now)
   );
@@ -69,7 +71,7 @@ export function estimateRailTempC(ambientC, now = new Date()) {
   if (istHour >= 11 && istHour <= 16) solarDelta = isSummer ? 23 : 18;
   else if ((istHour >= 8 && istHour < 11) || (istHour > 16 && istHour <= 18)) solarDelta = isSummer ? 15 : 11;
   else solarDelta = 4;
-  return Math.round(ambientC + solarDelta);
+  return Math.round(amb + solarDelta);
 }
 
 export async function loadWeatherData(manual = false) {
@@ -123,7 +125,10 @@ async function fetchOpenMeteo({ lat, lon }) {
   const rains = d.hourly?.rain || [];
   const nowMs = Date.now();
   for (let i = 0; i < times.length; i++) {
-    const tMs = Date.parse(times[i]);
+    const rawT = String(times[i] || '');
+    const isoT = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawT) ? rawT : `${rawT}+05:30`;
+    const tMs = Date.parse(isoT);
+    if (!Number.isFinite(tMs)) continue;
     const diffH = (tMs - nowMs) / 3600000;
     if (diffH >= 0 && diffH <= 12 && (rains[i] || 0) > upcomingRainMm) {
       upcomingRainMm = rains[i];
@@ -227,9 +232,9 @@ function getWeatherIcon(main) {
   return map[main] || Icons.sun(26, 'currentColor');
 }
 
-function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts, upcomingRainMm, upcomingRainHrs }) {
+export function analyzeRisks({ temp, railTemp, humidity, rainfall, windSpeed, windGusts, upcomingRainMm, upcomingRainHrs }, now = new Date()) {
   const risks = [];
-  const month = new Date().getMonth() + 1;
+  const month = now.getMonth() + 1;
   const isMonsoon = month >= 6 && month <= 10;
 
   if (railTemp >= 65) {
@@ -330,18 +335,20 @@ function showSeasonalFallback() {
   const isSummer = month >= 3 && month <= 5;
   const temp = isSummer ? 38 : isMonsoon ? 29 : 27;
 
-  renderWeather({
+  const fallback = {
     temp,
     humidity: isMonsoon ? 82 : 60,
     windSpeed: 12,
     windGusts: 16,
     rainfall: 0,
-    desc: 'Offline seasonal estimate',
+    desc: 'Offline seasonal baseline',
     main: isMonsoon ? 'Rain' : isSummer ? 'Clear' : 'Clouds',
     upcomingRainMm: 0,
     upcomingRainHrs: null,
     source: 'Offline Estimate',
-  }, false);
+  };
+  renderWeather(fallback, false);
+  window.dispatchEvent(new CustomEvent('railraksha:weather-updated', { detail: fallback }));
 }
 
 function showToast(msg, type = 'info') {

@@ -20,6 +20,7 @@ export const QUICK_RULES = [
     title: 'Permissible Gauge Variation (BG)',
     preview: 'Standard BG: 1676 mm. Straight: −6 to +6 mm; curves: −6 to +15 mm.',
     fullText: 'As per IRPWM Para 2.4.3: Standard Broad Gauge = 1676 mm. Maximum permissible variation on straight track is −6 mm to +6 mm. On curves with radius ≥ 350 m, −6 mm to +15 mm (up to +20 mm on sharp curves < 350 m). Report exceedances to PWI immediately and impose prescribed speed restriction.',
+    keywords: '1676mm broad gauge tolerance గేజ్',
     tag: 'gauge',
     irpwm: 'Para 2.4.3',
   },
@@ -30,6 +31,7 @@ export const QUICK_RULES = [
     title: 'Cracked or Fractured Rail',
     preview: '30 km/h caution for cracked rail; Stop Dead immediately for full fracture.',
     fullText: 'As per IRPWM Para 2.6.1: On detecting a cracked rail, impose an immediate 30 km/h caution order and fit joggle fishplates with C-clamps. If the rail fracture is complete (gap > 30 mm or unsafe), STOP all trains immediately, protect both directions with detonators/hand signals, and inform Station Master and PWI.',
+    keywords: 'broken rail fracture weld crack పట్టా విరిగింది ఫ్రాక్చర్',
     tag: 'emergency',
     irpwm: 'Para 2.6.1',
   },
@@ -40,6 +42,7 @@ export const QUICK_RULES = [
     title: 'Rail Temperature & Sun Kink (LWR)',
     preview: 'Hot-weather patrolling required above Td+20°C (~65°C) on BG LWR.',
     fullText: 'As per IRPWM Para 2.9 & LWR Manual: Hot-weather patrolling is mandatory when rail steel temperature exceeds Td+20°C (typically 65°C on BG Zone III). Patrol curves, SEJs, and welds closely. Do not disturb ballast during hot hours. If buckling/sun kink occurs, stop trains immediately and protect both sides.',
+    keywords: 'lwr thermal stress buckling sun kink 65c వేడి బక్లింగ్',
     tag: 'safety',
     irpwm: 'Para 2.9',
   },
@@ -50,6 +53,7 @@ export const QUICK_RULES = [
     title: 'Track Obstruction Protection (BG)',
     preview: 'Stop trains both sides; 1 detonator at 600 m + 3 detonators at 1200 m.',
     fullText: 'As per GR 3.62 / 3.78 for Broad Gauge obstruction protection: 1) Display red danger flag/lamp and send protection parties in both directions on double line (or approaching side). 2) Place 1 detonator at 600 m and 3 detonators (10 m apart) at 1200 m from the obstruction. 3) Stand 45 m beyond the last detonator displaying red hand signal and alert Station Masters.',
+    keywords: 'gr 3.62 3.78 detonators red banner flag 600m 1200m జెండా డిటోనేటర్',
     tag: 'emergency',
     irpwm: 'GR 3.62 / 3.78',
   },
@@ -60,6 +64,7 @@ export const QUICK_RULES = [
     title: 'Monsoon Patrolling & Flooding',
     preview: 'Water above rail foot/top = Stop Dead. Inspect bridges, culverts, banks.',
     fullText: 'As per IRPWM Para 2.11: Patrol assigned monsoon beat systematically during heavy rainfall. Inspect bridge waterways, danger level marks, catch-water drains, and cutting slopes. If floodwater reaches rail foot/top or submerges ballast/bridge danger mark, stop all trains immediately and alert both Station Masters.',
+    keywords: 'rain flood scour waterlogging drainage వర్షం వరద',
     tag: 'safety',
     irpwm: 'Para 2.11',
   },
@@ -70,6 +75,7 @@ export const QUICK_RULES = [
     title: 'Suspected Track Sabotage',
     preview: 'Stop trains immediately, preserve evidence, inform SM, PWI, and RPF (182).',
     fullText: 'Under GR 3.82: If deliberate tampering or missing rails/fishplates/fittings is suspected: 1) Stop trains from both directions immediately and protect the line. 2) Preserve the scene — do not disturb evidence or attempt solo repair. 3) Inform Station Master, PWI/SSE, and RPF Security Helpline (182 / 1800-111-322).',
+    keywords: 'gr 3.82 tampering rpf 182 security',
     tag: 'emergency',
     irpwm: 'GR 3.82',
   },
@@ -80,6 +86,7 @@ export const QUICK_RULES = [
     title: 'Defective PSC Sleeper Criteria',
     preview: '>3 transverse cracks, broken body, or loose insert = unserviceable.',
     fullText: 'As per IRPWM Para 3.2: A PSC concrete sleeper is unserviceable if it has >3 transverse cracks, cannot maintain gauge, has damaged inserts/liners, or is cracked through at the rail seat. More than 10% consecutive or clustered defective sleepers requires an immediate speed restriction and scheduled replacement.',
+    keywords: 'broken sleeper concrete crack insert స్లీపర్',
     tag: 'gauge',
     irpwm: 'Para 3.2',
   },
@@ -90,6 +97,7 @@ export const QUICK_RULES = [
     title: 'ERC Clip & Toe Load Inspection',
     preview: 'Check ERC seating, GFN liners, and rubber pads; lubricate to prevent seizure.',
     fullText: 'As per IRPWM Para 3.3: Elastic Rail Clips (ERC Mk-III / Mk-V) must maintain firm toe load (850–1100 kgf) with intact grooved rubber sole plates (GRSP) and insulating liners on track-circuited sections. Grease clip legs periodically in coastal corrosive stretches like SKM–UPD to prevent rail-seat seizure.',
+    keywords: 'pandrol clip missing fastening corrosion rust grsp తుప్పు క్లిప్',
     tag: 'gauge',
     irpwm: 'Para 3.3',
   },
@@ -100,6 +108,7 @@ export const QUICK_RULES = [
     title: 'Joggle Fishplate & Emergency Rail Joint',
     preview: 'Use 2 joggle fishplates + 2 C-clamps on defective welds; 30 km/h caution.',
     fullText: 'As per IRPWM / USFD instructions: When an AT weld shows a crack or IMR defect, immediately install joggle fishplates with two heavy-duty C-clamps (or far-end bolts), impose a 30 km/h caution order, post a watchman until permanent weld renewal, and log exact km post & rail side (LH/RH).',
+    keywords: 'alumino thermic weld fracture c-clamp fishplate వెల్డ్ పగులు',
     tag: 'safety',
     irpwm: 'Para 2.6 / USFD',
   },
@@ -110,6 +119,7 @@ export const QUICK_RULES = [
     title: 'Switch Expansion Joint (SEJ) Limits',
     preview: 'Check mean gap (~40 mm at Td), oiling of tongue/stock rails, and sleeper packing.',
     fullText: 'As per LWR Manual & IRPWM: SEJ gap must stay centered around mean design gap (~40 mm at Td, max opening 65–80 mm depending on 52/60 kg SEJ design). Oil sliding chairs every fortnight, ensure tight fastenings, and report abnormal closing/opening to PWI immediately.',
+    keywords: 'sej gap lwr tongue stock rail expansion',
     tag: 'gauge',
     irpwm: 'LWR Para 4.4',
   },
@@ -120,6 +130,7 @@ export const QUICK_RULES = [
     title: 'Lookout Man & Worksite Protection',
     preview: 'Mandatory dedicated lookout with horn/whistle & hand flags on curves/double line.',
     fullText: 'As per IRPWM Para 8.2 / GR: Whenever visibility is restricted (curves, cuttings, fog, noisy tamping) or working on high-speed double lines (110–130 km/h), post a dedicated Lookout Man equipped with high-visibility jacket, whistle/horn, and red/green flags. Clear all tools and personnel off the track and NEVER step blindly onto the adjacent track.',
+    keywords: '130 kmph double line adjacent track whistle horn lookout లుక్ అవుట్',
     tag: 'safety',
     irpwm: 'Para 8.2',
   },
@@ -130,6 +141,7 @@ export const QUICK_RULES = [
     title: 'Push Trolley & Material Lorry Protection',
     preview: 'Minimum 4 able-bodied men; banner flags at 600 m & 1200 m when visibility < 1200 m.',
     fullText: 'As per GR 15.18 & IRPWM: Push trolleys must only run under competent official supervision with red flag/lamp mounted. On double-line sections with visibility < 1200 m, protect with flagmen and detonators at 600 m and 1200 m, or operate strictly under Line Block authority from Station Master.',
+    keywords: 'gr 15.18 lorry line block banner flag',
     tag: 'protection',
     irpwm: 'GR 15.18',
   },
@@ -140,6 +152,7 @@ export const QUICK_RULES = [
     title: 'Broad Gauge Curve Cant & Versine',
     preview: 'Max BG cant 165 mm (Group A/B); check transition versine and rail wear.',
     fullText: 'As per IRPWM Para 4.2: Maximum permissible superelevation (cant) on BG Group A/B routes (like BZA–GDR mainline) is 165 mm (185 mm with special sanction). Inspect outer rail side wear, gauge widening, and check rail clearances regularly on sharp curves.',
+    keywords: 'superelevation versine curve rail wear',
     tag: 'gauge',
     irpwm: 'Para 4.2',
   },
@@ -150,6 +163,7 @@ export const QUICK_RULES = [
     title: 'Fog & Night Patrolling Precautions',
     preview: 'Carry detonators, tri-colour LED torch, reflective vest, and walk facing traffic.',
     fullText: 'As per IRPWM Para 2.12: During dense fog or night cold-weather patrolling, carry 10 fog detonators, charged tri-colour hand signal lamp, whistle, and high-visibility vest. Walk on the cess facing oncoming traffic on double lines and test rail joints audibly/visually at known vulnerable welds.',
+    keywords: 'night cold weather fog patrolman detonators torch',
     tag: 'safety',
     irpwm: 'Para 2.12',
   },
@@ -192,16 +206,21 @@ function syncCategoryButtons() {
   });
 }
 
+export function searchManualRules(filterQuery = '', category = 'ALL') {
+  const q = String(filterQuery || '').trim().toLowerCase();
+  const cat = String(category || 'ALL').toUpperCase();
+  const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
+  return QUICK_RULES.filter(r => {
+    if (cat !== 'ALL' && String(r.group || '').toUpperCase() !== cat) return false;
+    if (tokens.length === 0) return true;
+    const hay = `${r.title} ${r.category} ${r.preview} ${r.fullText} ${r.irpwm} ${r.keywords || ''}`.toLowerCase();
+    return tokens.every(tok => hay.includes(tok));
+  });
+}
+
 function renderQuickRules(filterQuery = '') {
   if (!elements.quickRulesList) return;
-  const q = filterQuery.toLowerCase();
-
-  const filtered = QUICK_RULES.filter(r => {
-    if (activeCategory !== 'ALL' && String(r.group || '').toUpperCase() !== activeCategory) return false;
-    if (!q) return true;
-    const hay = `${r.title} ${r.category} ${r.preview} ${r.fullText} ${r.irpwm}`.toLowerCase();
-    return q.split(/\s+/).every(tok => hay.includes(tok));
-  });
+  const filtered = searchManualRules(filterQuery, activeCategory);
 
   if (elements.rulesCountLabel) {
     elements.rulesCountLabel.textContent = `${filtered.length} of ${QUICK_RULES.length} offline rules`;
@@ -303,13 +322,13 @@ function startVoiceSearch() {
   }
 }
 
-function matchLocalRule(query) {
-  const tokens = query.toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+export function matchLocalRule(query) {
+  const tokens = String(query || '').toLowerCase().split(/\s+/).filter(t => t.length >= 2);
   if (tokens.length === 0) return null;
   let best = null;
   let bestScore = 0;
   for (const r of QUICK_RULES) {
-    const hay = `${r.title} ${r.category} ${r.preview} ${r.fullText} ${r.irpwm}`.toLowerCase();
+    const hay = `${r.title} ${r.category} ${r.preview} ${r.fullText} ${r.irpwm} ${r.keywords || ''}`.toLowerCase();
     let score = 0;
     for (const t of tokens) if (hay.includes(t)) score++;
     if (score > bestScore && score >= Math.ceil(tokens.length * 0.6)) {
