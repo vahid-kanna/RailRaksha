@@ -838,14 +838,19 @@ export async function handleChat(request, env = {}) {
       headers['X-Title'] = 'RailRaksha';
     }
 
-    for (const mdl of modelsToTry) {
+    for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+      const mdl = modelsToTry[mIdx];
       const payload = {
         ...body,
         model: mdl,
         max_tokens: Math.max(Number(body.max_tokens) || 3072, 3072),
       };
+      if (provider.name === 'gemini' && payload.reasoning_effort === undefined) {
+        payload.reasoning_effort = 'minimal';
+      }
+      const timeoutMs = (isLastProvider && mIdx === modelsToTry.length - 1) ? 25000 : 15000;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 35000);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const upstream = await fetch(endpoint, {
           method: 'POST',
