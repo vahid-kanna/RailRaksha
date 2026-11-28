@@ -209,7 +209,6 @@ function syncEngineConfig() {
   engine.cfg.clearanceS = (getConfigNum('alert_min_critical') || 3) * 60;
   engine.cfg.warnS      = (getConfigNum('alert_min_warn')     || 5) * 60;
   engine.cfg.prepareS   = (getConfigNum('alert_min_prepare')  || 10) * 60;
-  voice.lang = store.lang;
   live.preferLive = store.preferLive;
 }
 
@@ -449,7 +448,7 @@ function setupAcknowledgeButton() {
     orchestrator.acknowledge();
     pulseHaptic(60);
     loop();
-    showToast('Siren silenced briefly (critical voice stays armed)', 'info');
+    showToast('Buzzer silenced briefly', 'info');
   });
 }
 
